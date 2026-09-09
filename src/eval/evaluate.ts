@@ -21,6 +21,7 @@ import {
   failsHallucinatedCitation,
   failsIrrelevantCitation,
   failsMissedAuthority,
+  failsMissedRetrieval,
   failsUnsupportedClaim,
 } from "./metrics.js";
 
@@ -28,6 +29,8 @@ export async function evaluateQuestion(
   question: Question,
   run: LegalRun,
   judge: Judge,
+  /** RAG mode: the articles the retriever surfaced (undefined = no RAG). */
+  retrieved?: LegalRef[],
 ): Promise<QuestionResult> {
   const citations: LegalRef[] = normalizeCitations(run.citations);
   const hallucinated: LegalRef[] = citations.filter((c) => !existsInCorpus(c));
@@ -53,6 +56,14 @@ export async function evaluateQuestion(
     if (failed) failures.push(metric);
   };
 
+  // In RAG mode, decide retrieval recall first: if the retriever never surfaced
+  // the key authority, the agent could not cite it, so `missed_authority` is
+  // NOT applicable — that gap belongs to `missed_retrieval` alone. This avoids
+  // double-penalizing one root cause (retrieval failure) on two metrics.
+  const retrievalMissed =
+    retrieved !== undefined &&
+    failsMissedRetrieval(question.expected, retrieved);
+
   check(
     "hallucinated_citation",
     true,
@@ -60,7 +71,7 @@ export async function evaluateQuestion(
   );
   check(
     "missed_authority",
-    question.expected.keyAuthorities.length > 0,
+    question.expected.keyAuthorities.length > 0 && !retrievalMissed,
     failsMissedAuthority(question.expected, citations),
   );
   check(
@@ -73,21 +84,30 @@ export async function evaluateQuestion(
     known.length > 0,
     failsIrrelevantCitation(judgments),
   );
+  check(
+    "missed_retrieval",
+    retrieved !== undefined && question.expected.keyAuthorities.length > 0,
+    retrievalMissed,
+  );
 
   const passed = failures.length === 0;
 
-  return {
+  const trace: QuestionResult["trace"] = {
+    question: question.question,
+    answer: run.answer,
+    citations,
+    hallucinated,
+    judgments,
+  };
+  if (retrieved !== undefined) trace.retrieved = retrieved;
+
+  const result: QuestionResult = {
     questionId: question.id,
     title: question.title,
     passed,
     failures,
     applicableMetrics,
-    trace: {
-      question: question.question,
-      answer: run.answer,
-      citations,
-      hallucinated,
-      judgments,
-    },
+    trace,
   };
+  return result;
 }

@@ -13,6 +13,11 @@ import {
 import { staticJudge, alwaysRelevantJudge } from "../src/judge/judge.js";
 import { questionKeyedStaticJudge } from "../src/judge/static_from_questions.js";
 import { calibrateJudge } from "../src/judge/calibration.js";
+import {
+  keywordRetriever,
+  narrowRetriever,
+  oracleRetriever,
+} from "../src/corpus/retrieve.js";
 
 function question(id: string): Question {
   const q = questions.find((x) => x.id === id);
@@ -67,6 +72,68 @@ describe("control — a correct agent is not falsely flagged", () => {
       expect(r.passed).toBe(true);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// RAG retrieval dimension: measure retrieval recall (missed_retrieval).
+// Mutation proof for the retriever, mirroring the agent mutation tests.
+// ---------------------------------------------------------------------------
+describe("RAG — retrieval recall metric grades the retriever", () => {
+  const control = scriptedAgent(
+    "control:correct",
+    questions.map((q) => ({
+      match: q.question,
+      run: {
+        answer: "Answer grounded in the cited Code civil article.",
+        citations: q.expected.keyAuthorities,
+      },
+    })),
+  );
+
+  const keyByQuestion = new Map<string, LegalRef[]>(
+    questions.map((q) => [q.question, q.expected.keyAuthorities]),
+  );
+
+  it("catches a broken retriever that never surfaces the key authority", async () => {
+    const r = await runQuestion(control, judge, question("faute-delictuelle"), {
+      retriever: narrowRetriever,
+      k: 4,
+    });
+    expect(r.applicableMetrics).toContain("missed_retrieval");
+    expect(r.failures).toContain("missed_retrieval");
+    expect(r.passed).toBe(false);
+    // A retrieval miss is counted ONCE: missed_authority must not also fire
+    // (the agent could not cite an article that was never retrieved).
+    expect(r.applicableMetrics).not.toContain("missed_authority");
+    expect(r.failures).not.toContain("missed_authority");
+  });
+
+  it("does not false-positive on an oracle retriever (recall = 100%)", async () => {
+    for (const q of questions) {
+      const r = await runQuestion(control, judge, q, {
+        retriever: oracleRetriever(keyByQuestion),
+        k: 4,
+      });
+      expect(r.applicableMetrics).toContain("missed_retrieval");
+      expect(r.failures).not.toContain("missed_retrieval");
+      expect(r.trace.retrieved).toContain(q.expected.keyAuthorities[0]);
+    }
+  });
+
+  it("does not apply the retrieval metric outside RAG mode", async () => {
+    const r = await runQuestion(control, judge, question("faute-delictuelle"));
+    expect(r.applicableMetrics).not.toContain("missed_retrieval");
+    expect(r.trace.retrieved).toBeUndefined();
+  });
+
+  it("the lexical baseline retriever returns ranked, capped candidates", () => {
+    const retriever = keywordRetriever();
+    for (const q of questions) {
+      const got = retriever.retrieve(q.question, 4);
+      expect(got.length).toBeGreaterThan(0);
+      expect(got.length).toBeLessThanOrEqual(4);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

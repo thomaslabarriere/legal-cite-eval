@@ -38,16 +38,28 @@ export interface Question {
 }
 
 // ---------- Agent under test ----------
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+}
+
 export interface LegalRun {
   /** The agent's answer text. */
   answer: string;
   /** The article numbers the agent cited (as returned; normalized downstream). */
   citations: LegalRef[];
+  /** Token usage for this call, when the backend reports it (for cost). */
+  usage?: TokenUsage;
 }
 
 export interface LegalAgent {
   name: string;
-  run(input: { question: string }): Promise<LegalRun>;
+  /**
+   * Answer a question. In RAG mode the runner passes `allowedArticles` (the
+   * retrieved subset) and the agent must cite only from those; otherwise the
+   * agent sees the full corpus.
+   */
+  run(input: { question: string; allowedArticles?: LegalRef[] }): Promise<LegalRun>;
 }
 
 // ---------- LLM-as-a-Judge (relevance) ----------
@@ -100,6 +112,7 @@ export type MetricKey =
   | "irrelevant_citation"
   | "unsupported_claim"
   | "missed_authority"
+  | "missed_retrieval"
   | "agent_error";
 
 export const METRIC_WEIGHT: Record<MetricKey, number> = {
@@ -107,6 +120,11 @@ export const METRIC_WEIGHT: Record<MetricKey, number> = {
   irrelevant_citation: 3,
   unsupported_claim: 2,
   missed_authority: 2,
+  // Retrieval recall (RAG mode only): if the retriever never surfaced the key
+  // authority, the agent could not cite it. Heavy — it caps the ceiling. When
+  // it fires, `missed_authority` is made not-applicable (see evaluate.ts) so a
+  // single retrieval failure is counted once, not twice.
+  missed_retrieval: 3,
   agent_error: 2,
 };
 
@@ -123,7 +141,35 @@ export interface QuestionResult {
     citations: LegalRef[];
     hallucinated: LegalRef[];
     judgments: CitationJudgment[];
+    /** RAG mode: the articles the retriever surfaced for this question. */
+    retrieved?: LegalRef[];
   };
+  /** Cost/latency signal for this question, when running a real model. */
+  stats?: RunStats;
+}
+
+export interface RunStats {
+  /** Wall-clock latency of the agent call, in milliseconds. */
+  latencyMs: number;
+  /** Token usage of the agent call, when the backend reports it. */
+  usage?: TokenUsage;
+}
+
+/** Aggregate cost of a run, derived from per-question usage + a price table. */
+export interface CostSummary {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  /** Estimated USD, only when the model's price is known. */
+  estimatedUsd?: number;
+}
+
+/** Aggregate latency/throughput of a run, from per-question wall-clock. */
+export interface LatencySummary {
+  totalMs: number;
+  avgMs: number;
+  /** Questions per second (throughput). */
+  throughputPerSec: number;
 }
 
 export interface Scorecard {
@@ -137,4 +183,10 @@ export interface Scorecard {
   perQuestion: QuestionResult[];
   /** Reliability of the judge that produced the relevance verdicts, if measured. */
   judgeCalibration?: JudgeCalibration;
+  /** Whether this run used the RAG retrieval path. */
+  ragMode?: boolean;
+  /** Inference cost, when at least one question reported token usage. */
+  cost?: CostSummary;
+  /** Latency / throughput, when at least one question reported latency. */
+  latency?: LatencySummary;
 }

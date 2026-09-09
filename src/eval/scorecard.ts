@@ -8,12 +8,16 @@
 // ============================================================================
 
 import type {
+  CostSummary,
   JudgeCalibration,
+  LatencySummary,
   MetricKey,
   QuestionResult,
   Scorecard,
+  TokenUsage,
 } from "../types.js";
 import { METRIC_WEIGHT } from "../types.js";
+import { summarizeCost } from "./pricing.js";
 
 /** Stable display / iteration order for metrics. */
 const METRIC_ORDER: readonly MetricKey[] = [
@@ -21,6 +25,7 @@ const METRIC_ORDER: readonly MetricKey[] = [
   "irrelevant_citation",
   "unsupported_claim",
   "missed_authority",
+  "missed_retrieval",
   "agent_error",
 ];
 
@@ -28,12 +33,32 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n));
 }
 
+function summarizeLatency(results: QuestionResult[]): LatencySummary | undefined {
+  const latencies = results
+    .map((r) => r.stats?.latencyMs)
+    .filter((v): v is number => v !== undefined);
+  if (latencies.length === 0) return undefined;
+  const totalMs = latencies.reduce((a, b) => a + b, 0);
+  const avgMs = totalMs / latencies.length;
+  return {
+    totalMs,
+    avgMs,
+    throughputPerSec: totalMs > 0 ? (latencies.length / totalMs) * 1000 : 0,
+  };
+}
+
+export interface BuildScorecardOptions {
+  judgeCalibration?: JudgeCalibration;
+  ragMode?: boolean;
+}
+
 export function buildScorecard(
   agentName: string,
   model: string | undefined,
   results: QuestionResult[],
-  judgeCalibration?: JudgeCalibration,
+  options: BuildScorecardOptions = {},
 ): Scorecard {
+  const { judgeCalibration, ragMode } = options;
   const totalQuestions = results.length;
   const passed = results.filter((r) => r.passed).length;
 
@@ -74,6 +99,12 @@ export function buildScorecard(
           clamp(100 * (1 - failedWeight / applicableWeight), 0, 100),
         );
 
+  const usages: TokenUsage[] = results
+    .map((r) => r.stats?.usage)
+    .filter((u): u is TokenUsage => u !== undefined);
+  const cost: CostSummary | undefined = summarizeCost(model, usages);
+  const latency = summarizeLatency(results);
+
   return {
     agentName,
     ...(model !== undefined ? { model } : {}),
@@ -83,6 +114,9 @@ export function buildScorecard(
     rates,
     perQuestion: results,
     ...(judgeCalibration !== undefined ? { judgeCalibration } : {}),
+    ...(ragMode !== undefined ? { ragMode } : {}),
+    ...(cost !== undefined ? { cost } : {}),
+    ...(latency !== undefined ? { latency } : {}),
   };
 }
 
@@ -93,6 +127,7 @@ export function renderScorecard(sc: Scorecard): string {
   lines.push(rule);
   lines.push(`LegalCiteEval — ${sc.agentName}`);
   if (sc.model !== undefined) lines.push(`Model: ${sc.model}`);
+  if (sc.ragMode) lines.push("Mode: RAG (retrieve-then-cite)");
   lines.push(rule);
   lines.push(
     `Reliability score: ${sc.reliabilityScore}/100   ` +
@@ -122,6 +157,36 @@ export function renderScorecard(sc: Scorecard): string {
     const cell =
       rate === undefined ? "-" : `${(rate * 100).toFixed(0)}%`;
     lines.push(`  ${metric.padEnd(nameWidth)}   ${cell}`);
+  }
+
+  // Inference cost + latency section. Cost appears only when the agent
+  // reported token usage (real-model runs); latency appears whenever it is
+  // meaningful. A deterministic agent runs effectively instantly (sub-ms),
+  // where per-second throughput is noise, so that case is reported plainly
+  // instead of as a misleading "0.00 questions/s".
+  const showLatency = sc.latency !== undefined && sc.latency.avgMs >= 1;
+  if (sc.cost !== undefined || showLatency) {
+    lines.push("");
+    lines.push("Cost & latency");
+    if (sc.cost !== undefined) {
+      const c = sc.cost;
+      lines.push(
+        `  Tokens: ${c.totalTokens} (prompt ${c.promptTokens} / completion ${c.completionTokens})`,
+      );
+      lines.push(
+        c.estimatedUsd !== undefined
+          ? `  Est. cost: $${c.estimatedUsd.toFixed(4)} (illustrative list price, agent only)`
+          : "  Est. cost: n/a (unknown model price)",
+      );
+    }
+    if (showLatency && sc.latency !== undefined) {
+      const l = sc.latency;
+      lines.push(
+        `  Latency: ${(l.avgMs / 1000).toFixed(2)}s/question avg ` +
+          `(${(l.totalMs / 1000).toFixed(2)}s total)`,
+      );
+      lines.push(`  Throughput: ${l.throughputPerSec.toFixed(2)} questions/s`);
+    }
   }
 
   // Judge calibration section.

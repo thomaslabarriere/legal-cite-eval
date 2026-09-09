@@ -1,13 +1,22 @@
 import OpenAI from "openai";
-import type { LegalAgent, LegalRun } from "../types.js";
-import { renderCorpusForPrompt } from "../corpus/corpus.js";
+import type { LegalAgent, LegalRun, LegalRef, TokenUsage } from "../types.js";
+import { renderCorpusForPrompt, renderArticlesForPrompt } from "../corpus/corpus.js";
 import { tools, parseAnswerCall } from "./tools.js";
 
 export type Provider = "openai" | "openrouter";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
-function buildSystemPrompt(): string {
+/**
+ * Build the system prompt. In RAG mode (`allowedArticles` given) the agent
+ * sees ONLY the retrieved subset — so retrieval quality directly bounds what
+ * it can cite. Otherwise it sees the full corpus.
+ */
+function buildSystemPrompt(allowedArticles?: LegalRef[]): string {
+  const ragMode = allowedArticles !== undefined;
+  const corpusListing = ragMode
+    ? renderArticlesForPrompt(allowedArticles)
+    : renderCorpusForPrompt();
   return [
     "You are a careful French legal assistant answering questions about the Code civil.",
     "Rules:",
@@ -18,9 +27,21 @@ function buildSystemPrompt(): string {
     "- Keep the answer concise.",
     "- You must call the answer_question tool.",
     "",
-    "Corpus (available Code civil articles):",
-    renderCorpusForPrompt(),
+    ragMode
+      ? "Retrieved Code civil articles (you may cite ONLY these):"
+      : "Corpus (available Code civil articles):",
+    corpusListing,
   ].join("\n");
+}
+
+function extractUsage(
+  usage: OpenAI.Completions.CompletionUsage | undefined,
+): TokenUsage | undefined {
+  if (!usage) return undefined;
+  return {
+    promptTokens: usage.prompt_tokens ?? 0,
+    completionTokens: usage.completion_tokens ?? 0,
+  };
 }
 
 export function createLLMAgent(opts: {
@@ -44,30 +65,38 @@ export function createLLMAgent(opts: {
 
   const client = new OpenAI({ apiKey, baseURL });
 
-  const systemPrompt = buildSystemPrompt();
-
-  async function run({ question }: { question: string }): Promise<LegalRun> {
+  async function run({
+    question,
+    allowedArticles,
+  }: {
+    question: string;
+    allowedArticles?: LegalRef[];
+  }): Promise<LegalRun> {
     const completion = await client.chat.completions.create({
       model,
       tools,
       tool_choice: "required",
       messages: [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: buildSystemPrompt(allowedArticles) },
         { role: "user", content: question },
       ],
     });
 
+    const usage = extractUsage(completion.usage);
     const choice = completion.choices[0];
     const message = choice?.message;
     const toolCalls = message?.tool_calls ?? [];
 
     for (const call of toolCalls) {
       if (call.type !== "function") continue;
-      const run = parseAnswerCall(call.function.name, call.function.arguments);
-      if (run !== null) return run;
+      const parsed = parseAnswerCall(call.function.name, call.function.arguments);
+      if (parsed !== null) {
+        return usage !== undefined ? { ...parsed, usage } : parsed;
+      }
     }
 
-    return { answer: message?.content ?? "", citations: [] };
+    const fallback: LegalRun = { answer: message?.content ?? "", citations: [] };
+    return usage !== undefined ? { ...fallback, usage } : fallback;
   }
 
   return { name: `llm:${model}`, run };

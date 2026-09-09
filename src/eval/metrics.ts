@@ -60,3 +60,16 @@ export function failsIrrelevantCitation(
 ): boolean {
   return judgments.some((j) => j.relevant === false);
 }
+
+/**
+ * RAG mode. TRUE if any of `expected.keyAuthorities` (normalized) was NOT in
+ * the retrieved set — the retriever failed to surface the key authority, so
+ * the agent had no chance to cite it (retrieval recall < 100%).
+ */
+export function failsMissedRetrieval(
+  expected: ExpectedAnswer,
+  retrieved: LegalRef[],
+): boolean {
+  const inSet = new Set<LegalRef>(retrieved.map((r) => normalizeRef(r)));
+  return expected.keyAuthorities.some((a) => !inSet.has(normalizeRef(a)));
+}
