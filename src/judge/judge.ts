@@ -2,8 +2,7 @@ import OpenAI from "openai";
 import type { Judge, CitationJudgment, LegalRef } from "../types.js";
 import { renderCorpusForPrompt } from "../corpus/corpus.js";
 import { normalizeRef } from "../corpus/normalize.js";
-
-export type Provider = "openai" | "openrouter";
+import type { Provider } from "../agent/runAgent.js";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 

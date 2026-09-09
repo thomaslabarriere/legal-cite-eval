@@ -4,67 +4,68 @@
 // ILLUSTRATIVE / SYNTHETIC ONLY — NOT legal advice. Hand-labelled (question,
 // answer, citation, relevant) tuples used to measure the reliability of the
 // LLM-as-a-Judge: does the cited article actually support the given answer?
-// The `question` strings are reused/adapted from ../scenarios/questions.ts so a
-// deterministic judge keyed by question can be calibrated against these labels.
+//
+// The `question` of each item is taken VERBATIM from ../scenarios/questions.ts
+// (via `q(id)`) so that a deterministic judge keyed on the question string can
+// be calibrated against these labels without the two files drifting apart.
 // Every article used is in the public corpus subset (../corpus/corpus.ts).
-// Roughly balanced between relevant (true) and irrelevant (false) pairs.
 // ============================================================================
 
 import type { JudgeGoldItem } from "../types.js";
+import { questions } from "./questions.js";
+
+/** Exact question text for a question id (throws if the id is unknown). */
+function q(id: string): string {
+  const found = questions.find((x) => x.id === id);
+  if (!found) throw new Error(`judge_gold references unknown question id: ${id}`);
+  return found.question;
+}
 
 export const judgeGold: JudgeGoldItem[] = [
-  // --- Clearly relevant ---
+  // --- Clearly relevant (the article is the correct basis) ---
   {
-    question:
-      "Une personne cause un dommage à autrui par sa faute. Sur quel fondement peut-elle être tenue de le réparer ?",
+    question: q("faute-delictuelle"),
     answer:
       "L'auteur d'une faute ayant causé un dommage doit le réparer au titre de la responsabilité du fait personnel.",
     citation: "1240",
     relevant: true,
   },
   {
-    question:
-      "Une partie à un contrat valablement formé peut-elle unilatéralement cesser de l'exécuter ?",
+    question: q("force-obligatoire"),
     answer:
       "Non : les contrats légalement formés tiennent lieu de loi aux parties, qui ne peuvent s'y soustraire unilatéralement.",
     citation: "1103",
     relevant: true,
   },
   {
-    question:
-      "Un négociateur rompt brutalement et de mauvaise foi des pourparlers précontractuels. Sa responsabilité peut-elle être engagée ?",
+    question: q("negociation-bonne-foi"),
     answer:
       "Oui, la liberté de négocier doit s'exercer de bonne foi ; une rupture fautive engage la responsabilité de son auteur.",
     citation: "1112",
     relevant: true,
   },
   {
-    question:
-      "Un vendeur dissimule intentionnellement une information déterminante pour obtenir le consentement de l'acheteur. De quel vice s'agit-il ?",
+    question: q("dol"),
     answer:
       "Il s'agit d'un dol par réticence : la dissimulation intentionnelle d'une information déterminante vicie le consentement.",
     citation: "1137",
     relevant: true,
   },
   {
-    question:
-      "Un changement de circonstances imprévisible rend l'exécution du contrat excessivement onéreuse. Que prévoit le droit ?",
-    answer:
-      "La partie lésée peut demander une renégociation au titre de l'imprévision.",
+    question: q("imprevision"),
+    answer: "La partie lésée peut demander une renégociation au titre de l'imprévision.",
     citation: "1195",
     relevant: true,
   },
   {
-    question:
-      "Un débiteur n'exécute pas son obligation contractuelle et cause un préjudice. Sur quel fondement obtenir réparation ?",
+    question: q("inexecution-dommages"),
     answer:
       "Le débiteur est condamné au paiement de dommages et intérêts pour inexécution du contrat.",
     citation: "1231-1",
     relevant: true,
   },
   {
-    question:
-      "Un magazine publie sans autorisation des faits relevant de la vie privée d'une personne. Quel texte la protège ?",
+    question: q("vie-privee"),
     answer:
       "Chacun a droit au respect de sa vie privée, ce qui interdit une telle publication sans autorisation.",
     citation: "9",
@@ -73,56 +74,51 @@ export const judgeGold: JudgeGoldItem[] = [
 
   // --- Clearly irrelevant (right topic, wrong article) ---
   {
-    question:
-      "Une personne cause un dommage à autrui par sa faute. Sur quel fondement peut-elle être tenue de le réparer ?",
+    question: q("faute-delictuelle"),
     answer:
       "L'auteur d'une faute ayant causé un dommage doit le réparer au titre de la responsabilité du fait personnel.",
     citation: "544",
     relevant: false,
   },
   {
-    question:
-      "Un vendeur dissimule intentionnellement une information déterminante pour obtenir le consentement de l'acheteur. De quel vice s'agit-il ?",
+    question: q("dol"),
     answer:
       "Il s'agit d'un dol par réticence : la dissimulation intentionnelle d'une information déterminante vicie le consentement.",
     citation: "1242",
     relevant: false,
   },
   {
-    question:
-      "Un magazine publie sans autorisation des faits relevant de la vie privée d'une personne. Quel texte la protège ?",
+    question: q("vie-privee"),
     answer:
       "Chacun a droit au respect de sa vie privée, ce qui interdit une telle publication sans autorisation.",
     citation: "1195",
     relevant: false,
   },
   {
-    question:
-      "Une chose que l'on a sous sa garde cause un dommage à un tiers. Sur quel fondement rechercher la responsabilité du gardien ?",
+    question: q("fait-des-choses"),
     answer:
       "Le gardien d'une chose répond du dommage qu'elle cause, au titre de la responsabilité du fait des choses.",
     citation: "1103",
     relevant: false,
   },
 
-  // --- Subtle ones (plausible but off) ---
+  // --- Subtle near-misses ---
   {
-    // 1130 states the vices exist; 1137 is the specific dol basis. The answer
-    // asserts the DEFINITION of dol, so citing only the generic 1130 is a weak
-    // support but still arguably on-point — labelled relevant as a near-miss true.
-    question:
-      "Un vendeur dissimule intentionnellement une information déterminante pour obtenir le consentement de l'acheteur. De quel vice s'agit-il ?",
+    // 1130 states the vices of consent exist; 1137 is the specific dol basis.
+    // The answer merely names dol as a vice, so citing the generic 1130 is weak
+    // but arguably on-point — labelled a near-miss TRUE. The key-authority
+    // static judge (which only accepts 1137) will disagree here, which is
+    // exactly the kind of judge weakness calibration is meant to surface.
+    question: q("dol"),
     answer:
       "Il s'agit d'un dol, l'un des vices du consentement qui peut entraîner la nullité du contrat.",
     citation: "1130",
     relevant: true,
   },
   {
-    // Custody-of-a-thing answer citing 1240 (personal fault): a classic subtle
-    // confusion — the fait des choses regime (1242) is no-fault, so 1240 does
-    // NOT support this answer.
-    question:
-      "Une chose que l'on a sous sa garde cause un dommage à un tiers. Sur quel fondement rechercher la responsabilité du gardien ?",
+    // Custody-of-a-thing answer citing 1240 (personal fault): the fait des
+    // choses regime (1242) is no-fault, so 1240 does NOT support this answer.
+    question: q("fait-des-choses"),
     answer:
       "La responsabilité du gardien est engagée de plein droit du seul fait de la chose, sans qu'une faute personnelle soit exigée.",
     citation: "1240",

@@ -42,6 +42,8 @@ export const unsupportedAgent: LegalAgent = {
   },
 };
 
+/** Test fixture: `scriptedAgent` below is consumed by the mutation-proof tests
+ *  (to build a "correct" control agent), not by the CLI. */
 export interface ScriptedAnswer {
   match: string;
   run: LegalRun;

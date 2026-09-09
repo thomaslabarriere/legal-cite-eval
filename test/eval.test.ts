@@ -80,6 +80,15 @@ describe("judge calibration catches an unreliable judge", () => {
     expect(cal.agreementRate).toBeLessThan(1);
   });
 
+  it("the offline demo judge (key-authorities, keyed on the exact questions) is well-calibrated against the gold set", async () => {
+    // Regression guard: the gold set must reuse the verbatim questions.ts
+    // strings, so the CLI's no-key judge recognizes them. If they drift, this
+    // agreement collapses (the exact bug two reviews caught).
+    const cal = await calibrateJudge(questionKeyedStaticJudge(), judgeGold);
+    expect(cal.falsePositive).toBe(0);
+    expect(cal.agreementRate).toBeGreaterThanOrEqual(0.8);
+  });
+
   it("scores a gold-aligned judge at perfect agreement", async () => {
     const relevantByQuestion = new Map<string, Set<LegalRef>>();
     for (const item of judgeGold) {

@@ -58,10 +58,13 @@ export function buildScorecard(
   // it is a whole-run guard), so force its applicable count.
   applicable.set("agent_error", totalQuestions);
 
+  // Rate for every APPLICABLE metric (so a metric that was checked and passed
+  // shows 0%, distinct from a metric that was never applicable → left "-").
   const rates: Partial<Record<MetricKey, number>> = {};
-  for (const [metric, firedCount] of fired) {
-    const applicableCount = applicable.get(metric) ?? 0;
-    rates[metric] = applicableCount > 0 ? firedCount / applicableCount : 0;
+  for (const [metric, applicableCount] of applicable) {
+    if (applicableCount > 0) {
+      rates[metric] = (fired.get(metric) ?? 0) / applicableCount;
+    }
   }
 
   const reliabilityScore =
