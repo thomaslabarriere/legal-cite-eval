@@ -1,0 +1,30 @@
+{
+  "name": "legal-cite-eval",
+  "version": "0.1.0",
+  "description": "Hallucinated/irrelevant-citation evaluation for legal LLM agents, with a validated LLM-as-a-Judge",
+  "type": "module",
+  "bin": {
+    "legal-cite-eval": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "tsc -p tsconfig.build.json",
+    "start": "tsx src/cli.ts",
+    "run:eval": "tsx src/cli.ts run",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": ["legal", "llm", "evaluation", "hallucination", "llm-as-a-judge", "rag"],
+  "license": "MIT",
+  "dependencies": {
+    "langfuse": "^3.29.0",
+    "openai": "^5.19.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  },
+  "engines": { "node": ">=20" }
+}
