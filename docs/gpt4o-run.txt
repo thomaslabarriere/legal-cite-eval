@@ -1,0 +1,51 @@
+# Real gpt-4o run — raw CLI output (committed as evidence)
+# Date: 2026-09-14 — numbers are non-deterministic run to run.
+
+$ npx tsx src/cli.ts run --model gpt-4o
+
+Running 8 questions against llm:gpt-4o (judge: judge:gpt-4o)...
+────────────────────────────────────────────────────────────
+LegalCiteEval — llm:gpt-4o
+Model: gpt-4o
+────────────────────────────────────────────────────────────
+Reliability score: 100/100   Passed: 8/8
+
+Questions
+  ✓ faute-delictuelle — Responsabilité du fait personnel
+  ✓ force-obligatoire — Force obligatoire du contrat
+  ✓ negociation-bonne-foi — Rupture des pourparlers
+  ✓ dol — Dol par réticence
+  ✓ imprevision — Imprévision
+  ✓ inexecution-dommages — Dommages et intérêts contractuels
+  ✓ vie-privee — Atteinte à la vie privée
+  ✓ fait-des-choses — Responsabilité du fait des choses
+
+Metric rates (fired / applicable)
+  metric                  rate
+  hallucinated_citation   0%
+  irrelevant_citation     0%
+  unsupported_claim       0%
+  missed_authority        0%
+  missed_retrieval        -
+  agent_error             0%
+
+Cost & latency
+  Tokens: 5215 (prompt 4547 / completion 668)
+  Est. cost: $0.0180 (illustrative list price, agent only)
+  Latency: 2.75s/question avg (22.01s total)
+  Throughput: 0.36 questions/s
+
+Judge calibration
+  Judge: judge:gpt-4o
+  Agreement rate: 89% (17/19)
+  False positives: 2
+  False negatives: 0
+────────────────────────────────────────────────────────────
+
+# Note: two distinct judges, two distinct numbers, both honest:
+#  - OFFLINE static demo judge (answer-blind), calibrated against the
+#    DE-CIRCULARIZED gold set: 92% -> 74% once the circularity is removed
+#    (see DECISIONS.md #3). This is the methodology point.
+#  - REAL gpt-4o judge (this run): 89% (17/19), 2 false positives, 0 false
+#    negatives. Even a strong LLM judge rubber-stamps 2 unsupported citations
+#    as relevant -- which is exactly why the judge must be measured, not trusted.
