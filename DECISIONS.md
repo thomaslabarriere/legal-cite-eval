@@ -45,11 +45,13 @@ evaluation methodology. A judge whose error rate you have not measured is not a
 metric, it is an opinion. Anyone can print a reliability score; the first
 question about that score is who produced it and how often it is wrong.
 
-**Doesn't prove.** The gold set is 19 hand-labelled items — a floor that proves
+**Doesn't prove.** The gold set is 36 hand-labelled items — a floor that proves
 the calibration harness runs and can catch a bad judge, not a production-grade
 judge-quality figure. A real deployment needs a much larger, adversarial,
-lawyer-labelled set. (Committed real run: the gpt-4o judge calibrates at 89%,
-17/19, 2 false positives — even a strong judge is not trustworthy unmeasured.)
+lawyer-labelled set. (A gpt-4o judge run is committed as historical evidence but
+predates the Phase 4–5 expansion; it must be re-run against the current 36-item
+gold before its number is quoted — the point stands regardless: even a strong
+judge is not trustworthy unmeasured.)
 
 ---
 
@@ -69,13 +71,13 @@ answer-blind judge cannot catch).
 **Why.** If the gold set relabelled the judge's own signal, calibration would be
 circular: the judge is graded against itself and scores **~100% by construction**
 — a number that measures nothing. This is the single most important decision in
-the repo, and it is why the answer-blind judge scores only **74% (14/19)** once
+the repo, and it is why the answer-blind judge scores only **64% (23/36)** once
 the gold is decoupled from its `keyAuthorities` signal. I would rather ship a
-74% I can defend than a ~100% that is an artefact of grading a judge against its
+64% I can defend than a ~100% that is an artefact of grading a judge against its
 own key. (The circular gold that would produce the ~100% is deliberately *not*
 committed; the point is precisely that such a number is meaningless.)
 
-**Doesn't prove.** 74% is on 19 hand-labelled items, and the divergent cases are
+**Doesn't prove.** 64% is on 36 hand-labelled items, and the divergent cases are
 placed by hand — it bounds the demo judge's answer-blindness, it is not a stable
 population estimate.
 
@@ -167,5 +169,110 @@ no credits. And the static judge is what makes the offline mutation tests
 deterministic.
 
 **Doesn't prove.** The offline static judge is trivial (keyed on question
-authorities); the meaningful judge is the LLM one, whose 74% (decision 3) is the
-number that matters.
+authorities); its 64% (decision 3) bounds only its own answer-blindness, and the
+meaningful judge is the LLM one, whose calibration against the same 36-item gold
+is the number that matters (pending re-run — see decision 2).
+
+---
+
+## 8. Semantic + hybrid retrieval behind one interface; embeddings offline by default
+
+**Fork.** The retrieval dimension could stay a single lexical baseline, or grow
+a real embedding/hybrid stack. If it grows, embeddings could require a key
+(nothing runs offline) or fall back deterministically.
+
+**Chosen.** Three retrievers — `keyword` (lexical over the label), `semantic`
+(embeddings + cosine over label+gloss), `hybrid` (reciprocal-rank fusion of the
+two) — behind one `Retriever` interface, all passing through the SAME
+`missed_retrieval` diagnostic. Embeddings use the real OpenAI endpoint behind
+`OPENAI_API_KEY` and a deterministic offline hashed-bag-of-words embedder
+otherwise. RRF is rank-based, so it fuses the heterogeneous lexical and semantic
+rankings with no score normalization.
+
+**Why.** This covers the RAG mission's retrieval-depth items (hybrid + ranking)
+while keeping the whole thing runnable and testable with zero credits and zero
+network. Because every retriever goes through the same metric, this is
+retriever-agnostic measurement, not a demo of one clever retriever — swap in a
+vector DB behind the interface and the diagnostic is unchanged.
+
+**Doesn't prove.** Offline the hashed bag-of-words embedder is essentially
+lexical, so "semantic" largely replays token overlap and "hybrid" ties it rather
+than beating it; the discriminating power comes from WHAT each path indexes (the
+embedder reads the fuller gloss), not from learned meaning. Real embeddings are
+needed for a real semantic signal.
+
+---
+
+## 9. The reranker is a WIRED-IN stage that changes the citation, not an isolated score
+
+**Fork.** A reranker could be a standalone function you call and print, or a
+stage actually inserted into the pipeline so it changes what the agent cites.
+
+**Chosen.** Wired in. `--reranker` reorders the retrieved shortlist BEFORE the
+agent sees it; since the agent cites from the shortlist it is shown, reordering
+changes which article it cites and therefore the downstream attribution. The
+test proves the EFFECT (the citation flips from a distractor to the on-point
+article, and both `irrelevant_citation` and `missed_authority` clear), not just
+that a list got reordered. `lexicalReranker` is offline; `llmReranker` has an
+injectable client seam so its path is exercised at 0 credits, and it is
+fail-open (any error keeps the first-stage order).
+
+**Why.** A reranker that grades nothing is theatre. The value is showing that a
+precision stage can rescue a shortlist whose rank 1 is a wordy distractor — and
+the only honest way to show it is to let it move the citation and watch the
+attribution follow.
+
+**Doesn't prove.** The LLM reranker adds a model call's cost and latency on top
+of retrieval (the trade this stage makes), and the offline lexical reranker is a
+crude title-overlap signal, not a cross-encoder.
+
+---
+
+## 10. Chunking is a SEPARATE analysis, not a stage of the diagnostic
+
+**Fork.** Chunking (retrieval granularity on a long article) could be wired into
+the `run` pipeline and sold as "chunking supported", or kept as a standalone
+analysis that measures context reduction.
+
+**Chosen.** A standalone `chunks` analysis that measures how much context a
+targeted passage saves versus the whole article (~76% on the sample), explicitly
+declared in the README as NOT a stage of the run diagnostic.
+
+**Why.** The corpus is article-level, so wiring chunking into the pipeline would
+be a fake stage that changes nothing downstream. Overselling "chunking wired in"
+is exactly the kind of detail a technical reader checks and loses trust over.
+Measuring it honestly as an analysis covers the mission item without the lie.
+
+**Doesn't prove.** It measures context reduction on one synthetic long article;
+it says nothing about end-to-end answer quality with chunked retrieval, which
+would need the pipeline actually rebuilt around passages.
+
+---
+
+## 11. The corpus is engineered to BREAK recall saturation — and fine-tuning is declared NOT done
+
+**Fork.** Leave the toy corpus (lexical already finds everything, so no retriever
+can distinguish itself), or engineer it to discriminate: add real neighbouring
+articles as semantic distractors and hard paraphrased questions whose vocabulary
+misses the key article's label.
+
+**Chosen.** Engineer it. Ten more real post-2016 Code civil articles act as
+distractors / hard-question keys; four hard paraphrased questions are worded so
+the lexical baseline scores the key article 0 (recall drops to 58%, 7/12), while
+the key article's gloss lets the embedding path recover all four (67%, 8/12).
+That measurable delta is what makes the retrieval work demonstrable rather than
+saturated. Separately, **fine-tuning a legal-domain embedding model** (the RAG
+mission's last item) is a real training effort, out of scope for an honest
+deliverable, and is explicitly NOT implemented or simulated.
+
+**Why.** The sharpest critique of the toy version was "recall is saturated, so
+nothing you built for retrieval can be shown to work". Fabricating a corpus that
+discriminates answers that critique directly and honestly (it is still
+synthetic, but it now separates). And declaring fine-tuning undone beats faking
+it: a reader who greps for training code and finds none, after a claim, is lost.
+
+**Doesn't prove.** The corpus is still synthetic and hand-built to discriminate;
+it shows the instrument can attribute a real retrieval fault, not that these are
+production recall numbers. And the gold remains labelled by a non-lawyer — the
+structural ceiling of decisions 2–3 is unchanged; a lawyer-validated set would
+come from a real engagement, not from more of my own labels.
