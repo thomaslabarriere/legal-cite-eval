@@ -27,7 +27,7 @@ npx tsx src/cli.ts run --models gpt-4o,gpt-4o-mini
 # retrieve-then-cite (RAG) + retrieval-recall metric:
 npx tsx src/cli.ts run --model gpt-4o --rag
 # choose the retriever, add a reranker:
-npx tsx src/cli.ts run --model gpt-4o --retriever hybrid --reranker lexical
+npx tsx src/cli.ts run --model gpt-4o --retriever semantic --reranker lexical
 # compare retriever recall (offline, no key needed):
 npx tsx src/cli.ts retrievers
 # chunk-vs-whole context reduction (analysis, offline):
@@ -67,7 +67,7 @@ Retrieval recall @k=4 on 12 labelled questions (embedder: hashing, OFFLINE)
   hybrid     recall  67%  (8/12)
 ```
 
-The lexical baseline misses **all four hard paraphrases**; the embedding path recovers 4/4 of them (its gloss shares the vocabulary the label lacks). That is the measurable retrieval-depth delta the `missed_retrieval` metric then attributes. *Honest caveat:* offline the hashed bag-of-words embedder is itself essentially lexical, so `semantic` already captures token overlap and `hybrid` only ties it (RRF can even lose an easy question to a distractor both retrievers rank) — with real embeddings (a key) the semantic/hybrid picture changes. Set `OPENAI_API_KEY` for real embedding numbers.
+The lexical baseline misses **all four hard paraphrases**; the embedding path picks them up. **Read this delta for exactly what it is, and no more.** The lexical retriever indexes only each article's short `label`; the semantic one indexes `label + gloss`, and glosses were added *only* on the four hard-question articles, phrased close to the question. With the offline hashed bag-of-words embedder (no real semantic generalization), the "semantic recovery" is therefore mostly lexical overlap between the question and a gloss I wrote to match it. So this number does **not** prove embeddings help on real legal retrieval; it proves the `missed_retrieval` metric correctly *attributes* a recall gap when one exists (a fabricated one here). With a real key, `text-embedding-3-small` gives keyword 58% / semantic 75% / hybrid 75% (n=1, non-deterministic) — and there **`hybrid` does not beat `semantic`**: it matches the count but regresses on two hard questions (RRF lets a distractor the lexical ranks high drag the key article below `k`). Use `semantic`; `hybrid` is wired in for completeness, not because it wins here. Set `OPENAI_API_KEY` for real numbers.
 
 **Reranker** (`--reranker lexical|llm`). A reranker reorders the retrieved shortlist **before** the agent cites, so it changes *which* article the agent cites and therefore the attribution — it is a wired-in stage, not an isolated score. `lexical` re-scores by question/label overlap (offline, deterministic); `llm` asks a model to pick the most relevant candidate (needs a key; fail-open — keeps first-stage order on any error) and adds its own cost/latency on top of retrieval.
 
@@ -108,7 +108,7 @@ The 6 false positives (right article, wrong answer) and 7 false negatives (near-
 
 - `run --model gpt-4o` (no RAG, agent sees the full corpus): **100/100 (12/12)**, ~10.3k tokens, ~$0.034, ~2.6 s/question. The gpt-4o *judge* calibrates at **89% (32/36), 3 false positives, 1 false negative** — even a strong judge rubber-stamps three unsupported citations, which is exactly why the judge is measured, not trusted.
 - `run --model gpt-4o --rag` (retrieve-then-cite, lexical baseline retriever): **86/100 (7/12)** — the retriever **misses the key authority on 5 of 12 questions** (`missed_retrieval` 42%), and on two of those the agent then answers with no citation at all (`unsupported_claim`). Same agent, worse score, because the RAG layer is now in the loop and the harness attributes the failure to *retrieval*, not to the model. That is the whole point of per-layer attribution.
-- Retrieval recall with real `text-embedding-3-small` (offline hashed-BoW is close but weaker): keyword **58%**, semantic **75%**, hybrid **75%** — the hard paraphrased questions are where lexical misses and embeddings recover, a **+17-point** separation.
+- Retrieval recall with real `text-embedding-3-small` (n=1, non-deterministic): keyword **58%**, semantic **75%**, hybrid **75%**. Caveat above: that gap partly reflects a deliberate label-vs-gloss indexing asymmetry, not a clean semantic win, and `hybrid` matches `semantic` while regressing on two hard questions. Also note `--rag` defaults to the **keyword** retriever, so the 86/100 RAG score is the pessimistic (weakest-retriever) case by design; `--retriever semantic` lifts it.
 
 ## Why you can trust the harness (mutation proof)
 

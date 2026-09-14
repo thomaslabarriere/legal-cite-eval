@@ -194,11 +194,19 @@ network. Because every retriever goes through the same metric, this is
 retriever-agnostic measurement, not a demo of one clever retriever — swap in a
 vector DB behind the interface and the diagnostic is unchanged.
 
-**Doesn't prove.** Offline the hashed bag-of-words embedder is essentially
-lexical, so "semantic" largely replays token overlap and "hybrid" ties it rather
-than beating it; the discriminating power comes from WHAT each path indexes (the
-embedder reads the fuller gloss), not from learned meaning. Real embeddings are
-needed for a real semantic signal.
+**Doesn't prove.** The recall delta is *not* evidence that embeddings help on
+real legal retrieval — it is largely a fabricated-corpus artefact, and I say so
+plainly: (a) the lexical path indexes only the short `label` while the semantic
+path indexes `label + gloss`, so the baseline is handicapped by construction;
+(b) glosses were added only on the four hard-question articles, phrased close to
+their question, so even the offline hashed-BoW "semantic" wins by lexical
+question↔gloss overlap, not by learned meaning; (c) on the real-embeddings run
+`hybrid` does not beat `semantic` — it matches the count but regresses on two
+hard questions (RRF drags a lexical-ranked distractor above the key article).
+What this genuinely shows is that `missed_retrieval` correctly *attributes* a
+recall gap when one exists. A real semantic gain needs real embeddings on a
+corpus whose glosses are not written to match the questions — the honest next
+step, called out rather than papered over.
 
 ---
 
