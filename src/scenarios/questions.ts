@@ -66,4 +66,40 @@ export const questions: Question[] = [
       "Une chose que l'on a sous sa garde cause un dommage à un tiers. Sur quel fondement la responsabilité du gardien peut-elle être recherchée ?",
     expected: { keyAuthorities: ["1242"], requiresCitation: true },
   },
+
+  // ── HARD, PARAPHRASED questions (Phase 4) ────────────────────────────────
+  // Deliberately worded so the question vocabulary does NOT overlap the key
+  // article's terse LABEL (and avoids the lexical retriever's synonym table),
+  // so the lexical baseline scores the key article 0 and misses it. The key
+  // article's GLOSS (indexed only by the embedding path) does share the
+  // question's vocabulary, so semantic/hybrid recover it — which is what makes
+  // the recall delta (hybrid > lexical) measurable rather than saturated.
+  {
+    id: "violence-economique",
+    title: "Abus de dépendance",
+    question:
+      "Une partie profite de la situation de faiblesse de son partenaire pour lui arracher un engagement très déséquilibré à son seul avantage. Ce comportement peut-il justifier l'annulation ?",
+    expected: { keyAuthorities: ["1143"], requiresCitation: true },
+  },
+  {
+    id: "force-majeure",
+    title: "Événement extérieur libératoire",
+    question:
+      "Un événement extérieur, imprévu et insurmontable empêche définitivement une partie de tenir son engagement. Cette partie est-elle exonérée de sa responsabilité ?",
+    expected: { keyAuthorities: ["1218"], requiresCitation: true },
+  },
+  {
+    id: "devoir-information",
+    title: "Renseignement capital tu",
+    question:
+      "Avant de conclure, une partie détenait un renseignement capital pour la décision de son cocontractant et ne le lui a pas communiqué. A-t-elle manqué à une obligation légale ?",
+    expected: { keyAuthorities: ["1112-1"], requiresCitation: true },
+  },
+  {
+    id: "execution-forcee",
+    title: "Fourniture concrète de la prestation",
+    question:
+      "Face à un engagement inexécuté, le créancier veut contraindre son partenaire à fournir concrètement la prestation promise plutôt que de se contenter d'une indemnité. Le peut-il ?",
+    expected: { keyAuthorities: ["1221"], requiresCitation: true },
+  },
 ];
