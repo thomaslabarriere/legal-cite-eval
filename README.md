@@ -6,6 +6,8 @@ A legal agent is only trustworthy if it cites real authorities that actually sup
 
 > **Scope.** Not legal advice, not an authority on French law. The corpus is a small **public** subset of the Code civil, the questions are **synthetic**, and there is no client data. The value is the evaluation instrument, including judge calibration, not the legal content. Plug in your own eval sets for real numbers.
 
+> **On the word "agent".** The thing under test is a **one-shot classifier/verifier**, not an autonomous agent: the real-model path is a single `chat.completions.create` call with one `answer_question` tool and no planning, memory, or multi-step tool loop (in `--rag` mode a lexical retriever runs once before that single call). Where the code and this README say "agent" it is only a loose label for "the thing being evaluated"; the `buggy:*` fixtures are plain, network-free functions. Plug in a genuinely agentic answerer and the same harness still applies — it only grades the answer and citations returned.
+
 ## Quick start (no API key needed)
 
 ```bash
