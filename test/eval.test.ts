@@ -192,15 +192,18 @@ describe("judge calibration catches an unreliable judge", () => {
     // A judge keyed only on (question, citation) CANNOT fix these — relevance
     // depends on the answer — which is exactly the weakness calibration exposes.
     const cal = await calibrateJudge(questionKeyedStaticJudge(), judgeGold);
-    expect(cal.total).toBe(19);
+    expect(cal.total).toBe(36);
     expect(cal.falsePositive).toBeGreaterThan(0);
     expect(cal.falseNegative).toBeGreaterThan(0);
     expect(cal.agreementRate).toBeLessThan(1);
     // Regression guard: exact measured counts from the real gold set (not a
-    // tuned target — these are whatever the honest labels produce).
-    expect(cal.falsePositive).toBe(2);
-    expect(cal.falseNegative).toBe(3);
-    expect(cal.agree).toBe(14);
+    // tuned target — these are whatever the honest labels produce). 36 items:
+    // 23 agree, 6 false positives (right article, wrong answer), 7 false
+    // negatives (near-miss authorities) -> 64% agreement for the answer-blind
+    // static judge.
+    expect(cal.falsePositive).toBe(6);
+    expect(cal.falseNegative).toBe(7);
+    expect(cal.agree).toBe(23);
   });
 
   it("the static judge still RECOGNIZES the verbatim question text (no drift)", async () => {

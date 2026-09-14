@@ -211,4 +211,153 @@ export const judgeGold: JudgeGoldItem[] = [
     relevant: false,
     note: "The fait des choses regime is no-fault, so 1240 (personal fault) does not support this answer.",
   },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Phase 5 — divergent cases on the HARD paraphrased questions (Phase 4). Same
+  // de-circularization discipline: labels are legal judgements about the
+  // ANSWER, authored independently of the corpus keyAuthorities, so the
+  // answer-blind static judge keeps making genuine FN (near-miss) and FP
+  // (right-article-wrong-answer) errors on this larger set too.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ── Abus de dépendance (key authority 1143) ────────────────────────────────
+  {
+    question: q("violence-economique"),
+    answer:
+      "Oui : l'abus de l'état de dépendance pour obtenir un engagement assorti d'un avantage manifestement excessif est une violence qui vicie le consentement et permet l'annulation.",
+    citation: "1143",
+    relevant: true,
+    note: "1143 is the abuse-of-dependence violence article — the exact basis.",
+  },
+  {
+    question: q("violence-economique"),
+    answer:
+      "Oui, il s'agit d'une violence, l'un des vices du consentement, qui peut entraîner la nullité du contrat.",
+    citation: "1130",
+    relevant: true,
+    note: "1130 enumerates the vices du consentement (incl. violence) and links them to nullity; it genuinely supports THIS answer. keyAuthority is the specific 1143, so the answer-blind static judge disagrees (false negative).",
+  },
+  {
+    question: q("violence-economique"),
+    answer:
+      "Oui : l'abus de dépendance vicie le consentement et justifie l'annulation du contrat.",
+    citation: "1103",
+    relevant: false,
+    note: "1103 (binding force of contracts) does not support an abuse-of-dependence / nullity answer. Static judge agrees (true negative).",
+  },
+  {
+    question: q("violence-economique"),
+    answer:
+      "L'action en nullité pour ce vice se prescrit par cinq ans à compter du jour où la violence a cessé.",
+    citation: "1143",
+    relevant: false,
+    note: "The answer is about the limitation period, not what the vice IS; 1143 defines the vice, it does not support a prescription claim. keyAuthority is 1143, so the answer-blind static judge wrongly marks it relevant (false positive).",
+  },
+
+  // ── Force majeure (key authority 1218) ─────────────────────────────────────
+  {
+    question: q("force-majeure"),
+    answer:
+      "Oui : un événement extérieur, imprévu et insurmontable échappant à son contrôle caractérise la force majeure et l'exonère de sa responsabilité.",
+    citation: "1218",
+    relevant: true,
+    note: "1218 defines force majeure — squarely supports the exoneration answer.",
+  },
+  {
+    question: q("force-majeure"),
+    answer:
+      "Oui, elle échappe à la condamnation à des dommages et intérêts, l'exécution ayant été empêchée par un tel événement.",
+    citation: "1231-1",
+    relevant: true,
+    note: "1231-1 excuses contractual damages when performance was prevented by force majeure — it genuinely supports THIS answer. keyAuthority is 1218, so the answer-blind static judge disagrees (false negative).",
+  },
+  {
+    question: q("force-majeure"),
+    answer: "Oui, l'événement la libère de son obligation contractuelle.",
+    citation: "544",
+    relevant: false,
+    note: "544 (droit de propriété) is unrelated to force majeure. Static judge agrees (true negative).",
+  },
+  {
+    question: q("force-majeure"),
+    answer:
+      "Non : un tel événement ne libère jamais le débiteur, qui reste tenu d'exécuter son engagement.",
+    citation: "1218",
+    relevant: false,
+    note: "The answer contradicts what 1218 provides (force majeure DOES exonerate); the article does not support a 'never freed' claim. keyAuthority is 1218, so the answer-blind static judge wrongly marks it relevant (false positive).",
+  },
+  {
+    question: q("force-majeure"),
+    answer:
+      "Oui, l'événement de force majeure l'exonère de sa responsabilité contractuelle.",
+    citation: "1112-1",
+    relevant: false,
+    note: "1112-1 (precontractual information duty) is unrelated to force majeure. Static judge agrees (true negative).",
+  },
+
+  // ── Devoir d'information précontractuel (key authority 1112-1) ──────────────
+  {
+    question: q("devoir-information"),
+    answer:
+      "Oui : celui qui connaît une information déterminante pour le consentement de l'autre doit l'en informer ; le taire méconnaît le devoir précontractuel d'information.",
+    citation: "1112-1",
+    relevant: true,
+    note: "1112-1 is the precontractual information duty — the exact basis.",
+  },
+  {
+    question: q("devoir-information"),
+    answer:
+      "Oui, et si la dissimulation de cette information déterminante était intentionnelle, elle constitue un dol par réticence.",
+    citation: "1137",
+    relevant: true,
+    note: "1137 (dol, incl. réticence dolosive) covers the intentional concealment of a determinative information — it genuinely supports THIS answer. keyAuthority is 1112-1, so the answer-blind static judge disagrees (false negative).",
+  },
+  {
+    question: q("devoir-information"),
+    answer: "Oui, elle a manqué à son devoir d'information avant de conclure.",
+    citation: "1195",
+    relevant: false,
+    note: "1195 (imprévision) is unrelated to a precontractual information duty. Static judge agrees (true negative).",
+  },
+  {
+    question: q("devoir-information"),
+    answer:
+      "Oui, et ce devoir portait aussi sur l'estimation de la valeur de la prestation, qu'elle aurait dû révéler.",
+    citation: "1112-1",
+    relevant: false,
+    note: "1112-1 expressly EXCLUDES the estimation of value from the information duty, so it does not support this answer. keyAuthority is 1112-1, so the answer-blind static judge wrongly marks it relevant (false positive).",
+  },
+
+  // ── Exécution forcée en nature (key authority 1221) ────────────────────────
+  {
+    question: q("execution-forcee"),
+    answer:
+      "Oui : le créancier peut poursuivre l'exécution forcée en nature de l'obligation, sauf impossibilité ou coût manifestement déraisonnable.",
+    citation: "1221",
+    relevant: true,
+    note: "1221 is the forced-performance-in-kind article, with its cost exception — the exact basis.",
+  },
+  {
+    question: q("execution-forcee"),
+    answer:
+      "Oui, poursuivre l'exécution forcée en nature figure parmi les sanctions ouvertes au créancier en cas d'inexécution.",
+    citation: "1217",
+    relevant: true,
+    note: "1217 lists the creditor's remedies for non-performance, expressly including pursuing forced performance in kind — it genuinely supports THIS answer. keyAuthority is the specific 1221, so the answer-blind static judge disagrees (false negative).",
+  },
+  {
+    question: q("execution-forcee"),
+    answer: "Oui, il peut exiger l'exécution en nature de la prestation promise.",
+    citation: "9",
+    relevant: false,
+    note: "Article 9 (privacy) is unrelated to forced performance. Static judge agrees (true negative).",
+  },
+  {
+    question: q("execution-forcee"),
+    answer:
+      "Oui, et l'exécution forcée en nature s'impose toujours, quel qu'en soit le coût pour le débiteur.",
+    citation: "1221",
+    relevant: false,
+    note: "1221 carves out an exception when the cost is manifestly unreasonable, so it does not support an 'always, whatever the cost' answer. keyAuthority is 1221, so the answer-blind static judge wrongly marks it relevant (false positive).",
+  },
 ];
