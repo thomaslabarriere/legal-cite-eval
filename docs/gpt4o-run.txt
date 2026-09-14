@@ -1,14 +1,14 @@
 # Real gpt-4o run — raw CLI output (committed as evidence)
-# Date: 2026-09-14 — numbers are non-deterministic run to run.
+# Date: 2026-09-14 — current corpus: 12 questions, 36-item judge gold. Non-deterministic.
 
 $ npx tsx src/cli.ts run --model gpt-4o
 
-Running 8 questions against llm:gpt-4o (judge: judge:gpt-4o)...
+Running 12 questions against llm:gpt-4o (judge: judge:gpt-4o)...
 ────────────────────────────────────────────────────────────
 LegalCiteEval — llm:gpt-4o
 Model: gpt-4o
 ────────────────────────────────────────────────────────────
-Reliability score: 100/100   Passed: 8/8
+Reliability score: 100/100   Passed: 12/12
 
 Questions
   ✓ faute-delictuelle — Responsabilité du fait personnel
@@ -19,6 +19,10 @@ Questions
   ✓ inexecution-dommages — Dommages et intérêts contractuels
   ✓ vie-privee — Atteinte à la vie privée
   ✓ fait-des-choses — Responsabilité du fait des choses
+  ✓ violence-economique — Abus de dépendance
+  ✓ force-majeure — Événement extérieur libératoire
+  ✓ devoir-information — Renseignement capital tu
+  ✓ execution-forcee — Fourniture concrète de la prestation
 
 Metric rates (fired / applicable)
   metric                  rate
@@ -30,23 +34,73 @@ Metric rates (fired / applicable)
   agent_error             0%
 
 Cost & latency
-  Tokens: 5215 (prompt 4547 / completion 668)
-  Est. cost: $0.0180 (illustrative list price, agent only)
-  Latency: 2.75s/question avg (22.01s total)
-  Throughput: 0.36 questions/s
+  Tokens: 10317 (prompt 9204 / completion 1113)
+  Est. cost: $0.0341 (illustrative list price, agent only)
+  Latency: 2.63s/question avg (31.54s total)
+  Throughput: 0.38 questions/s
 
 Judge calibration
   Judge: judge:gpt-4o
-  Agreement rate: 89% (17/19)
-  False positives: 2
-  False negatives: 0
+  Agreement rate: 89% (32/36)
+  False positives: 3
+  False negatives: 1
 ────────────────────────────────────────────────────────────
 
-# Note: two distinct judges, two distinct numbers, both honest:
-#  - OFFLINE static demo judge (answer-blind), calibrated against the
-#    DE-CIRCULARIZED gold set: 74% (14/19). A circular gold would score ~100%
-#    by construction (not committed, precisely because it measures nothing).
-#    This is the methodology point (see DECISIONS.md #3).
-#  - REAL gpt-4o judge (this run): 89% (17/19), 2 false positives, 0 false
-#    negatives. Even a strong LLM judge rubber-stamps 2 unsupported citations
-#    as relevant -- which is exactly why the judge must be measured, not trusted.
+Scorecard written to scorecard.json
+
+$ npx tsx src/cli.ts run --model gpt-4o --rag
+
+Running 12 questions against llm:gpt-4o (judge: judge:gpt-4o) [RAG]...
+────────────────────────────────────────────────────────────
+LegalCiteEval — llm:gpt-4o
+Model: gpt-4o
+Mode: RAG (retrieve-then-cite)
+────────────────────────────────────────────────────────────
+Reliability score: 86/100   Passed: 7/12
+
+Questions
+  ✓ faute-delictuelle — Responsabilité du fait personnel
+  ✓ force-obligatoire — Force obligatoire du contrat
+  ✓ negociation-bonne-foi — Rupture des pourparlers
+  ✗ dol — Dol par réticence  [missed_retrieval]
+  ✓ imprevision — Imprévision
+  ✓ inexecution-dommages — Dommages et intérêts contractuels
+  ✓ vie-privee — Atteinte à la vie privée
+  ✓ fait-des-choses — Responsabilité du fait des choses
+  ✗ violence-economique — Abus de dépendance  [missed_retrieval]
+  ✗ force-majeure — Événement extérieur libératoire  [unsupported_claim, missed_retrieval]
+  ✗ devoir-information — Renseignement capital tu  [unsupported_claim, missed_retrieval]
+  ✗ execution-forcee — Fourniture concrète de la prestation  [missed_retrieval]
+
+Metric rates (fired / applicable)
+  metric                  rate
+  hallucinated_citation   0%
+  irrelevant_citation     0%
+  unsupported_claim       17%
+  missed_authority        0%
+  missed_retrieval        42%
+  agent_error             0%
+
+Cost & latency
+  Tokens: 4496 (prompt 3398 / completion 1098)
+  Est. cost: $0.0195 (illustrative list price, agent only)
+  Latency: 2.16s/question avg (25.88s total)
+  Throughput: 0.46 questions/s
+
+Judge calibration
+  Judge: judge:gpt-4o
+  Agreement rate: 86% (31/36)
+  False positives: 4
+  False negatives: 1
+────────────────────────────────────────────────────────────
+
+Scorecard written to scorecard.json
+
+$ npx tsx src/cli.ts retrievers   # offline recall comparison
+
+Retrieval recall @k=4 on 12 labelled questions (embedder: embedder:text-embedding-3-small)
+----------------------------------------------------------------
+  keyword    recall  58%  (7/12)   missed: dol, violence-economique, force-majeure, devoir-information, execution-forcee
+  semantic   recall  75%  (9/12)   missed: force-obligatoire, dol, imprevision
+  hybrid     recall  75%  (9/12)   missed: dol, force-majeure, execution-forcee
+----------------------------------------------------------------

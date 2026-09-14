@@ -104,7 +104,11 @@ Judge calibration
 
 The 6 false positives (right article, wrong answer) and 7 false negatives (near-miss authorities) are structural: a judge keyed only on `(question, citation)` **cannot** get them right, because relevance depends on the answer. That gap — 64%, not ~100% — is the honest measure of how far a cheap answer-blind judge falls short of a judge that actually reads the answer. With an API key the same section instead reports the live LLM judge's agreement against the same gold.
 
-**Real gpt-4o numbers — pending re-run (see below).** A gpt-4o run is committed as historical evidence (`docs/gpt4o-run.txt`, 2026-09-14), but it **predates the Phase 4–5 expansion** (it was run against the old 8 questions / 19-item gold, before the hard paraphrased questions and the 36-item gold). <!-- TODO(Phase 6): re-run gpt-4o against the current 12 questions + 36-item gold and replace these numbers. --> Do not read the old 100/100 agent score or 89% (17/19) judge calibration as current; they will be regenerated when the harness is next run with a key. The reproducible OFFLINE numbers (64% static-judge calibration above, and the retrieval-recall table in the retrieval-depth section) are current.
+**Real gpt-4o run, committed as evidence** (`docs/gpt4o-run.txt`, 2026-09-14, current 12-question / 36-item-gold corpus; non-deterministic run to run):
+
+- `run --model gpt-4o` (no RAG, agent sees the full corpus): **100/100 (12/12)**, ~10.3k tokens, ~$0.034, ~2.6 s/question. The gpt-4o *judge* calibrates at **89% (32/36), 3 false positives, 1 false negative** — even a strong judge rubber-stamps three unsupported citations, which is exactly why the judge is measured, not trusted.
+- `run --model gpt-4o --rag` (retrieve-then-cite, lexical baseline retriever): **86/100 (7/12)** — the retriever **misses the key authority on 5 of 12 questions** (`missed_retrieval` 42%), and on two of those the agent then answers with no citation at all (`unsupported_claim`). Same agent, worse score, because the RAG layer is now in the loop and the harness attributes the failure to *retrieval*, not to the model. That is the whole point of per-layer attribution.
+- Retrieval recall with real `text-embedding-3-small` (offline hashed-BoW is close but weaker): keyword **58%**, semantic **75%**, hybrid **75%** — the hard paraphrased questions are where lexical misses and embeddings recover, a **+17-point** separation.
 
 ## Why you can trust the harness (mutation proof)
 

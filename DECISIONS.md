@@ -48,10 +48,9 @@ question about that score is who produced it and how often it is wrong.
 **Doesn't prove.** The gold set is 36 hand-labelled items — a floor that proves
 the calibration harness runs and can catch a bad judge, not a production-grade
 judge-quality figure. A real deployment needs a much larger, adversarial,
-lawyer-labelled set. (A gpt-4o judge run is committed as historical evidence but
-predates the Phase 4–5 expansion; it must be re-run against the current 36-item
-gold before its number is quoted — the point stands regardless: even a strong
-judge is not trustworthy unmeasured.)
+lawyer-labelled set. (Committed real run on the current 36-item gold: the gpt-4o
+judge calibrates at 89%, 32/36, 3 false positives — even a strong judge is not
+trustworthy unmeasured.)
 
 ---
 
@@ -171,7 +170,7 @@ deterministic.
 **Doesn't prove.** The offline static judge is trivial (keyed on question
 authorities); its 64% (decision 3) bounds only its own answer-blindness, and the
 meaningful judge is the LLM one, whose calibration against the same 36-item gold
-is the number that matters (pending re-run — see decision 2).
+is the number that matters: gpt-4o at 89% (32/36), 3 FP, 1 FN (see decision 2).
 
 ---
 
