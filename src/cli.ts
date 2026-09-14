@@ -10,6 +10,7 @@ import { buildRetriever, type RetrieverKind } from "./corpus/retrieve.js";
 import { defaultEmbedder } from "./corpus/embeddings.js";
 import { lexicalReranker, llmReranker, type Reranker, type RerankerKind } from "./corpus/rerank.js";
 import { recallAtK } from "./eval/recall.js";
+import { analyzeChunking } from "./corpus/chunking.js";
 import { buildScorecard, renderScorecard } from "./eval/scorecard.js";
 import { createLLMAgent } from "./agent/runAgent.js";
 import type { Provider } from "./agent/runAgent.js";
@@ -66,6 +67,7 @@ function usage(): void {
       "  legal-cite-eval run --reranker lexical|llm    # reorder the shortlist before citing",
       "  legal-cite-eval run --agent buggy:<name>      # no API key needed",
       "  legal-cite-eval retrievers [--k <n>]          # compare keyword/semantic/hybrid recall (offline)",
+      "  legal-cite-eval chunks [--max-chars <n>]      # chunk vs whole-article context reduction (analysis)",
       "",
       "Keys (set one): OPENAI_API_KEY  or  OPENROUTER_API_KEY",
       "Optional tracing: LANGFUSE_PUBLIC_KEY + LANGFUSE_SECRET_KEY",
@@ -171,12 +173,36 @@ async function retrieversCommand(args: string[]): Promise<void> {
   }
 }
 
+/** Chunking analysis: chunk vs whole-article retrieval on a long article. */
+function chunksCommand(args: string[]): void {
+  const maxCharsFlag = Number(getFlag(args, "max-chars") ?? 160);
+  const maxChars = Number.isFinite(maxCharsFlag) && maxCharsFlag > 0 ? maxCharsFlag : 160;
+  const q =
+    getFlag(args, "question") ??
+    "Faut-il une mise en demeure avant de résoudre le contrat ?";
+  const a = analyzeChunking(q, maxChars);
+  console.log("\nChunking analysis (SEPARATE analysis, NOT a stage of the run diagnostic)");
+  console.log("-".repeat(64));
+  console.log(`  Question: ${a.question}`);
+  console.log(`  Whole-article context: ${a.wholeContextChars} chars`);
+  console.log(`  Best-chunk context:    ${a.chunkContextChars} chars (max-chars=${maxChars})`);
+  console.log(`  Context reduction:     ${(a.contextReduction * 100).toFixed(0)}%`);
+  console.log(`  Right passage pinpointed: ${a.targetPassageHit ? "yes" : "no"}`);
+  console.log(`  Best chunk: ${a.bestChunkText}`);
+  console.log("-".repeat(64));
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const command = args[0];
 
   if (command === "retrievers") {
     await retrieversCommand(args);
+    return;
+  }
+
+  if (command === "chunks") {
+    chunksCommand(args);
     return;
   }
 
