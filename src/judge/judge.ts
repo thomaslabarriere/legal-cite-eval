@@ -50,18 +50,24 @@ const judgeTools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   },
 ];
 
-interface ParsedVerdict {
+export interface ParsedVerdict {
   citation: LegalRef;
   relevant: boolean;
   reason?: string;
 }
 
+/** Minimal seam over the OpenAI client: only the chat surface is used, so a
+ *  fake (e.g. one that throws) can be injected in tests without a network. */
+export type ChatClient = Pick<OpenAI, "chat">;
+
 /**
  * Parse the tool-call arguments into a map of normalized citation -> verdict.
  * Returns null if the payload is not the expected shape. Individual malformed
- * entries are skipped rather than failing the whole parse.
+ * entries are skipped rather than failing the whole parse. Exported so the
+ * LLM judge's pure parsing can be unit-tested (valid + malformed JSON) with
+ * zero API calls.
  */
-function parseVerdicts(argsJson: string): Map<LegalRef, ParsedVerdict> | null {
+export function parseVerdicts(argsJson: string): Map<LegalRef, ParsedVerdict> | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(argsJson);
@@ -121,6 +127,8 @@ export function createLLMJudge(opts: {
   provider?: Provider;
   apiKey?: string;
   baseURL?: string;
+  /** Injectable client seam for tests (defaults to a real OpenAI client). */
+  client?: ChatClient;
 }): Judge {
   const { model } = opts;
   const provider: Provider = opts.provider ?? "openai";
@@ -135,7 +143,7 @@ export function createLLMJudge(opts: {
       ? process.env["OPENROUTER_API_KEY"]
       : process.env["OPENAI_API_KEY"]);
 
-  const client = new OpenAI({ apiKey, baseURL });
+  const client: ChatClient = opts.client ?? new OpenAI({ apiKey, baseURL });
   const systemPrompt = buildSystemPrompt();
 
   async function assess(input: {

@@ -5,6 +5,10 @@ import { tools, parseAnswerCall } from "./tools.js";
 
 export type Provider = "openai" | "openrouter";
 
+/** Minimal seam over the OpenAI client: only the chat surface is used, so a
+ *  fake (e.g. one that throws) can be injected in tests without a network. */
+export type ChatClient = Pick<OpenAI, "chat">;
+
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
 /**
@@ -49,6 +53,8 @@ export function createLLMAgent(opts: {
   provider?: Provider;
   apiKey?: string;
   baseURL?: string;
+  /** Injectable client seam for tests (defaults to a real OpenAI client). */
+  client?: ChatClient;
 }): LegalAgent {
   const { model } = opts;
   const provider: Provider = opts.provider ?? "openai";
@@ -63,7 +69,7 @@ export function createLLMAgent(opts: {
       ? process.env["OPENROUTER_API_KEY"]
       : process.env["OPENAI_API_KEY"]);
 
-  const client = new OpenAI({ apiKey, baseURL });
+  const client: ChatClient = opts.client ?? new OpenAI({ apiKey, baseURL });
 
   async function run({
     question,

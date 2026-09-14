@@ -90,8 +90,14 @@ export interface JudgeGoldItem {
   question: string;
   answer: string;
   citation: LegalRef;
-  /** Ground-truth label. */
+  /**
+   * Ground-truth label, hand-authored from legal reasoning about whether the
+   * cited article actually supports THIS answer — authored INDEPENDENTLY of the
+   * corpus `keyAuthorities` signal the static judge keys on (see judge_gold.ts).
+   */
   relevant: boolean;
+  /** Human rationale for the label (documentation; not read by scoring). */
+  note?: string;
 }
 
 export interface JudgeCalibration {

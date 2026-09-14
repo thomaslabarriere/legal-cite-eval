@@ -1,8 +1,8 @@
 # LegalCiteEval
 
-**Citation-reliability evaluation for legal LLM agents, with a validated LLM-as-a-Judge.**
+**Citation-reliability evaluation for legal LLM agents, with a calibrated LLM-as-a-Judge.**
 
-A legal agent is only trustworthy if it cites real authorities that actually support its answer, and doesn't assert conclusions with no basis. LegalCiteEval scores an agent on a set of ground-truth Code civil questions: hallucinated citations and missing key authorities are checked **objectively** against a public corpus, while citation *relevance* is assessed by an **LLM-as-a-Judge**, whose own reliability is then **measured against a labelled gold set**. Because the first question about any judge is: *who judges the judge?*
+A legal agent is only trustworthy if it cites real authorities that actually support its answer, and doesn't assert conclusions with no basis. LegalCiteEval scores an agent on a set of ground-truth Code civil questions: hallucinated citations and missing key authorities are checked **objectively** against a public corpus, while citation *relevance* is assessed by an **LLM-as-a-Judge**, whose own reliability is then **measured against a hand-labelled gold set authored independently of the signal the offline judge keys on**. Because the first question about any judge is: *who judges the judge?*
 
 > **Scope.** Not legal advice, not an authority on French law. The corpus is a small **public** subset of the Code civil, the questions are **synthetic**, and there is no client data. The value is the evaluation instrument, including judge calibration, not the legal content. Plug in your own eval sets for real numbers.
 
@@ -57,9 +57,27 @@ Cost & latency
 
 Hallucination and missing-authority are objective (corpus membership). Relevance is the judge's call, and the scorecard's **Judge calibration** section shows how often that judge agrees with the labelled gold set (and its false-positive / false-negative counts), so you know how much to trust the relevance verdicts.
 
+### Judge calibration (who judges the judge?)
+
+The gold set (`src/scenarios/judge_gold.ts`, 19 hand-labelled items) is authored **independently** of the corpus `keyAuthorities`: every `relevant` label is a legal judgement about whether the cited article supports *that specific answer*, not a copy of "is this the key authority". It deliberately includes hard cases where relevance and key-authority membership diverge — near-miss authorities that genuinely support the answer but are not the registered key article, and the correct key article cited under an answer it does *not* support. That decoupling is what stops the number from being self-fulfilling.
+
+Any offline run reports the calibration of the deterministic no-key judge (`judge:static-keyauthorities`, which is answer-blind — it credits exactly the key authority per question). Against the independent gold it scores:
+
+```
+Judge calibration
+  Judge: judge:static-keyauthorities
+  Agreement rate: 74% (14/19)
+  False positives: 2
+  False negatives: 3
+```
+
+The 2 false positives (right article, wrong answer) and 3 false negatives (near-miss authorities) are structural: a judge keyed only on `(question, citation)` **cannot** get them right, because relevance depends on the answer. That gap — 74%, not ~100% — is the honest measure of how far a cheap answer-blind judge falls short of a judge that actually reads the answer. With an API key the same section instead reports the live LLM judge's agreement against the same gold.
+
 ## Why you can trust the harness (mutation proof)
 
-`test/eval.test.ts` runs deliberately-broken agents (hallucinator, irrelevant-citer, unsupported) and asserts each is caught on the right metric, that a correct agent passes every question, and, crucially, that **calibration catches an unreliable judge** (a judge that calls everything relevant is flagged with false positives; a gold-aligned judge scores perfect agreement). The same mutation-proof discipline covers retrieval: a broken retriever that never surfaces the key authority is caught by `missed_retrieval`, while an oracle retriever is not falsely flagged.
+`test/eval.test.ts` runs deliberately-broken agents (hallucinator, irrelevant-citer, unsupported) and asserts each is caught on the right metric, that a correct agent passes every question, and, crucially, that **calibration catches an unreliable judge**: a judge that calls everything relevant is flagged with false positives; the answer-blind static judge shows genuine false positives *and* false negatives against the decoupled gold (proving the agreement is not self-fulfilling); and an answer-aware oracle judge reaches perfect agreement (the ceiling the static judge structurally cannot). The same mutation-proof discipline covers retrieval: a broken retriever that never surfaces the key authority is caught by `missed_retrieval`, while an oracle retriever is not falsely flagged.
+
+The LLM judge/agent paths are covered too, with **zero API credits**: the pure parsers (`parseVerdicts`, `parseAnswerCall`) are tested on valid and malformed JSON, and an injected fake client exercises the **fail-open seam** — when the client throws or returns garbage, the judge degrades to `relevant=true` (it never fabricates an agent failure) and a throwing agent surfaces as `agent_error`, never a fabricated pass.
 
 ```bash
 npm test
@@ -73,7 +91,7 @@ src/
   corpus/             # public Code civil subset + normalization + retrieval (RAG)
   agent/              # legal agent (OpenAI / OpenRouter) + buggy agents
   judge/              # LLM-as-a-Judge + static judge + calibration
-  scenarios/          # 8 questions + judge gold set
+  scenarios/          # 8 questions + 19-item independent judge gold set
   eval/               # metrics, evaluator, scorecard
   runner.ts · cli.ts · obs/langfuse.ts
 test/                 # mutation-proof + calibration tests

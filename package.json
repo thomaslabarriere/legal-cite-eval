@@ -1,7 +1,7 @@
 {
   "name": "legal-cite-eval",
   "version": "0.1.0",
-  "description": "Hallucinated/irrelevant-citation evaluation for legal LLM agents, with a validated LLM-as-a-Judge",
+  "description": "Hallucinated/irrelevant-citation evaluation for legal LLM agents, with a calibrated LLM-as-a-Judge",
   "type": "module",
   "bin": {
     "legal-cite-eval": "./dist/cli.js"

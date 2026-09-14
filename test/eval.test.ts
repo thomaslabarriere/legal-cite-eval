@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { LegalRef, Question } from "../src/types.js";
+import type { LegalRef, Question, Judge } from "../src/types.js";
 import { questions } from "../src/scenarios/questions.js";
 import { judgeGold } from "../src/scenarios/judge_gold.js";
 import { runQuestion } from "../src/runner.js";
@@ -10,7 +10,14 @@ import {
   unsupportedAgent,
   scriptedAgent,
 } from "../src/agent/buggy.js";
-import { staticJudge, alwaysRelevantJudge } from "../src/judge/judge.js";
+import {
+  alwaysRelevantJudge,
+  parseVerdicts,
+  createLLMJudge,
+  type ChatClient,
+} from "../src/judge/judge.js";
+import { createLLMAgent } from "../src/agent/runAgent.js";
+import { parseAnswerCall } from "../src/agent/tools.js";
 import { questionKeyedStaticJudge } from "../src/judge/static_from_questions.js";
 import { calibrateJudge } from "../src/judge/calibration.js";
 import {
@@ -137,8 +144,10 @@ describe("RAG — retrieval recall metric grades the retriever", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Judge calibration: the differentiator. Calibration must catch a bad judge,
-// and a gold-aligned judge must score perfectly. (Who judges the judge?)
+// Judge calibration: the differentiator. Calibration must catch a bad judge.
+// The gold labels are authored INDEPENDENTLY of the keyAuthorities signal the
+// static judge keys on (see judge_gold.ts), so this measures something real
+// rather than being self-fulfilling. (Who judges the judge?)
 // ---------------------------------------------------------------------------
 describe("judge calibration catches an unreliable judge", () => {
   it("flags a judge that calls everything relevant (false positives > 0)", async () => {
@@ -147,26 +156,212 @@ describe("judge calibration catches an unreliable judge", () => {
     expect(cal.agreementRate).toBeLessThan(1);
   });
 
-  it("the offline demo judge (key-authorities, keyed on the exact questions) is well-calibrated against the gold set", async () => {
-    // Regression guard: the gold set must reuse the verbatim questions.ts
-    // strings, so the CLI's no-key judge recognizes them. If they drift, this
-    // agreement collapses (the exact bug two reviews caught).
+  it("de-circularization: the gold has hard cases where relevance and keyAuthority-membership diverge in BOTH directions", async () => {
+    // If the gold were just "relevant = is-a-keyAuthority", the answer-blind
+    // static judge would agree everywhere (circular, ~100%). Because labels are
+    // decoupled from keyAuthorities, the static judge now makes genuine errors:
+    //  - false negatives on near-miss authorities it cannot credit, and
+    //  - false positives when the right article is cited under a wrong answer.
+    // A judge keyed only on (question, citation) CANNOT fix these — relevance
+    // depends on the answer — which is exactly the weakness calibration exposes.
     const cal = await calibrateJudge(questionKeyedStaticJudge(), judgeGold);
-    expect(cal.falsePositive).toBe(0);
-    expect(cal.agreementRate).toBeGreaterThanOrEqual(0.8);
+    expect(cal.total).toBe(19);
+    expect(cal.falsePositive).toBeGreaterThan(0);
+    expect(cal.falseNegative).toBeGreaterThan(0);
+    expect(cal.agreementRate).toBeLessThan(1);
+    // Regression guard: exact measured counts from the real gold set (not a
+    // tuned target — these are whatever the honest labels produce).
+    expect(cal.falsePositive).toBe(2);
+    expect(cal.falseNegative).toBe(3);
+    expect(cal.agree).toBe(14);
   });
 
-  it("scores a gold-aligned judge at perfect agreement", async () => {
-    const relevantByQuestion = new Map<string, Set<LegalRef>>();
+  it("the static judge still RECOGNIZES the verbatim question text (no drift)", async () => {
+    // The gold reuses the exact questions.ts strings, so the no-key CLI judge
+    // sees them. If the strings drifted, the judge would return no verdict for
+    // every item and fail open to relevant=true everywhere — which would zero
+    // out its false negatives. Their presence proves recognition still holds.
+    const cal = await calibrateJudge(questionKeyedStaticJudge(), judgeGold);
+    expect(cal.falseNegative).toBeGreaterThan(0);
+  });
+
+  it("an ANSWER-AWARE oracle judge scores perfect agreement (the ceiling a key-authority judge cannot reach)", async () => {
+    // Keyed on the full (question, answer, citation) triple, so it can tell the
+    // near-miss and wrong-answer cases apart. Demonstrates the gold is
+    // internally consistent and that the static judge's errors are a property
+    // of its answer-blindness, not of noisy labels.
+    const relevantByTriple = new Set<string>();
+    const key = (question: string, answer: string, citation: LegalRef): string =>
+      `${question} ${answer} ${normalizeRef(citation)}`;
     for (const item of judgeGold) {
-      const set = relevantByQuestion.get(item.question) ?? new Set<LegalRef>();
-      if (item.relevant) set.add(normalizeRef(item.citation));
-      relevantByQuestion.set(item.question, set);
+      if (item.relevant) relevantByTriple.add(key(item.question, item.answer, item.citation));
     }
-    const aligned = staticJudge("judge:gold-aligned", relevantByQuestion);
-    const cal = await calibrateJudge(aligned, judgeGold);
+    const oracle: Judge = {
+      name: "judge:answer-aware-oracle",
+      async assess(input) {
+        return input.citations.map((raw) => ({
+          citation: normalizeRef(raw),
+          relevant: relevantByTriple.has(key(input.question, input.answer, raw)),
+        }));
+      },
+    };
+    const cal = await calibrateJudge(oracle, judgeGold);
     expect(cal.agreementRate).toBe(1);
     expect(cal.falsePositive).toBe(0);
     expect(cal.falseNegative).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LLM-path stub tests (0 API credits). Exercise the LLM judge/agent code
+// paths that a live run uses — the pure parsers and the fail-open seam —
+// WITHOUT any network call, so "validated" covers the LLM path too and not
+// only the deterministic judge. No API key is read: a fake client is injected.
+// ---------------------------------------------------------------------------
+
+/** Build a ChatClient whose chat.completions.create runs the given impl. */
+function fakeChatClient(create: () => Promise<unknown>): ChatClient {
+  return {
+    chat: { completions: { create } },
+  } as unknown as ChatClient;
+}
+
+/** A completion carrying a single function tool call. */
+function toolCallCompletion(name: string, args: unknown): unknown {
+  return {
+    choices: [
+      {
+        message: {
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: { name, arguments: typeof args === "string" ? args : JSON.stringify(args) },
+            },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+describe("LLM judge — pure verdict parser (parseVerdicts)", () => {
+  it("parses valid tool-call JSON into normalized verdicts", () => {
+    const map = parseVerdicts(
+      JSON.stringify({
+        verdicts: [
+          { citation: "art. 1240", relevant: false, reason: "off point" },
+          { citation: "1103", relevant: true },
+        ],
+      }),
+    );
+    expect(map).not.toBeNull();
+    expect(map?.get("1240")).toEqual({ citation: "1240", relevant: false, reason: "off point" });
+    expect(map?.get("1103")).toEqual({ citation: "1103", relevant: true });
+  });
+
+  it("returns null on malformed / non-conforming JSON", () => {
+    expect(parseVerdicts("not json at all")).toBeNull();
+    expect(parseVerdicts("42")).toBeNull();
+    expect(parseVerdicts(JSON.stringify({ verdicts: "nope" }))).toBeNull();
+    expect(parseVerdicts(JSON.stringify({ nope: [] }))).toBeNull();
+  });
+
+  it("skips individual malformed entries rather than failing the whole parse", () => {
+    const map = parseVerdicts(
+      JSON.stringify({
+        verdicts: [
+          { citation: "1240", relevant: true },
+          { citation: 1240, relevant: true }, // citation not a string -> skipped
+          { citation: "1103", relevant: "yes" }, // relevant not a boolean -> skipped
+          null,
+        ],
+      }),
+    );
+    expect(map).not.toBeNull();
+    expect(map?.size).toBe(1);
+    expect(map?.get("1240")).toEqual({ citation: "1240", relevant: true });
+  });
+});
+
+describe("LLM agent — pure tool-call parser (parseAnswerCall)", () => {
+  it("parses a valid answer_question call", () => {
+    const run = parseAnswerCall(
+      "answer_question",
+      JSON.stringify({ answer: "Oui.", citations: ["1103", "1104"] }),
+    );
+    expect(run).toEqual({ answer: "Oui.", citations: ["1103", "1104"] });
+  });
+
+  it("returns null for the wrong tool name or malformed args", () => {
+    expect(parseAnswerCall("something_else", JSON.stringify({ answer: "x", citations: [] }))).toBeNull();
+    expect(parseAnswerCall("answer_question", "not json")).toBeNull();
+    expect(parseAnswerCall("answer_question", JSON.stringify({ answer: 1, citations: [] }))).toBeNull();
+    expect(parseAnswerCall("answer_question", JSON.stringify({ answer: "x", citations: "no" }))).toBeNull();
+    expect(parseAnswerCall("answer_question", JSON.stringify({ answer: "x", citations: [1, 2] }))).toBeNull();
+  });
+});
+
+describe("LLM judge — fail-open seam (injected client, 0 API calls)", () => {
+  it("honors a genuine model verdict (does not fabricate relevance)", async () => {
+    const judge = createLLMJudge({
+      model: "fake",
+      client: fakeChatClient(async () =>
+        toolCallCompletion("report_relevance", {
+          verdicts: [{ citation: "1240", relevant: false, reason: "off point" }],
+        }),
+      ),
+    });
+    const out = await judge.assess({ question: "q", answer: "a", citations: ["1240"] });
+    expect(out).toEqual([{ citation: "1240", relevant: false, reason: "off point" }]);
+  });
+
+  it("fails OPEN (relevant=true) when the client throws — never a fabricated agent failure", async () => {
+    const judge = createLLMJudge({
+      model: "fake",
+      client: fakeChatClient(async () => {
+        throw new Error("network down");
+      }),
+    });
+    const out = await judge.assess({ question: "q", answer: "a", citations: ["1240", "544"] });
+    expect(out).toEqual([
+      { citation: "1240", relevant: true },
+      { citation: "544", relevant: true },
+    ]);
+  });
+
+  it("fails OPEN when the model returns malformed tool arguments", async () => {
+    const judge = createLLMJudge({
+      model: "fake",
+      client: fakeChatClient(async () => toolCallCompletion("report_relevance", "}{ not json")),
+    });
+    const out = await judge.assess({ question: "q", answer: "a", citations: ["1240"] });
+    expect(out).toEqual([{ citation: "1240", relevant: true }]);
+  });
+});
+
+describe("LLM agent — fail-safe seam (injected client, 0 API calls)", () => {
+  it("parses a valid tool call from the injected client", async () => {
+    const agent = createLLMAgent({
+      model: "fake",
+      client: fakeChatClient(async () =>
+        toolCallCompletion("answer_question", { answer: "Oui.", citations: ["1103"] }),
+      ),
+    });
+    const run = await agent.run({ question: "q" });
+    expect(run.answer).toBe("Oui.");
+    expect(run.citations).toEqual(["1103"]);
+  });
+
+  it("a throwing client surfaces as an agent_error, never a fabricated pass", async () => {
+    const agent = createLLMAgent({
+      model: "fake",
+      client: fakeChatClient(async () => {
+        throw new Error("network down");
+      }),
+    });
+    const r = await runQuestion(agent, questionKeyedStaticJudge(), question("dol"));
+    expect(r.passed).toBe(false);
+    expect(r.failures).toContain("agent_error");
   });
 });
