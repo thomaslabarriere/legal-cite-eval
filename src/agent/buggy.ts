@@ -42,6 +42,23 @@ export const unsupportedAgent: LegalAgent = {
   },
 };
 
+/**
+ * Test fixture: an agent that cites whatever article leads the shortlist it is
+ * shown (rank 1), abstaining if none was retrieved. It makes the effect of
+ * reranking observable — reorder the shortlist and the citation (and its
+ * attribution) follows. Not used by the CLI.
+ */
+export const topCitedAgent: LegalAgent = {
+  name: "fixture:cite-top-retrieved",
+  async run({ question, allowedArticles }): Promise<LegalRun> {
+    const top = allowedArticles?.[0];
+    if (top === undefined) {
+      return { answer: `No article retrieved for "${question}".`, citations: [] };
+    }
+    return { answer: `The applicable article is ${top}.`, citations: [top] };
+  },
+};
+
 /** Test fixture: `scriptedAgent` below is consumed by the mutation-proof tests
  *  (to build a "correct" control agent), not by the CLI. */
 export interface ScriptedAnswer {

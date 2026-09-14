@@ -8,6 +8,7 @@ import { runQuestions } from "./runner.js";
 import type { RetrievalOptions } from "./runner.js";
 import { buildRetriever, type RetrieverKind } from "./corpus/retrieve.js";
 import { defaultEmbedder } from "./corpus/embeddings.js";
+import { lexicalReranker, llmReranker, type Reranker, type RerankerKind } from "./corpus/rerank.js";
 import { recallAtK } from "./eval/recall.js";
 import { buildScorecard, renderScorecard } from "./eval/scorecard.js";
 import { createLLMAgent } from "./agent/runAgent.js";
@@ -62,6 +63,7 @@ function usage(): void {
       "  legal-cite-eval run --models <m1,m2,...>      # compare several models",
       "  legal-cite-eval run --rag [--k <n>]           # retrieve-then-cite + recall metric",
       "  legal-cite-eval run --retriever keyword|semantic|hybrid [--k <n>]   # choose the RAG retriever",
+      "  legal-cite-eval run --reranker lexical|llm    # reorder the shortlist before citing",
       "  legal-cite-eval run --agent buggy:<name>      # no API key needed",
       "  legal-cite-eval retrievers [--k <n>]          # compare keyword/semantic/hybrid recall (offline)",
       "",
@@ -126,6 +128,20 @@ function resolveRetrieverKind(args: string[]): RetrieverKind {
   return "keyword";
 }
 
+function resolveReranker(flag: string, args: string[]): Reranker {
+  const kind = flag as RerankerKind;
+  if (kind === "lexical") return lexicalReranker();
+  if (kind === "llm") {
+    // Reuse the run's provider/model; the client is created lazily and fails
+    // open (keeps first-stage order) if no key is present.
+    const providerFlag = getFlag(args, "provider");
+    const provider = providerFlag === "openrouter" ? "openrouter" : "openai";
+    const model = getFlag(args, "model") ?? DEFAULT_MODEL[provider];
+    return llmReranker({ model, provider });
+  }
+  throw new Error(`Unknown reranker "${flag}". Use lexical | llm.`);
+}
+
 /** Compare recall of keyword / semantic / hybrid on the labelled question set. */
 async function retrieversCommand(args: string[]): Promise<void> {
   const k = resolveK(args);
@@ -174,11 +190,18 @@ async function main(): Promise<void> {
   // RAG mode: retrieve-then-cite over the full corpus, and grade retrieval
   // recall (missed_retrieval). --rag uses the keyword baseline; --retriever
   // selects keyword | semantic | hybrid. Either flag turns RAG on.
-  const ragOn = hasFlag(args, "rag") || getFlag(args, "retriever") !== undefined;
+  const rerankerFlag = getFlag(args, "reranker");
+  const ragOn =
+    hasFlag(args, "rag") ||
+    getFlag(args, "retriever") !== undefined ||
+    rerankerFlag !== undefined;
   const retrieval: RetrievalOptions | undefined = ragOn
     ? {
         retriever: buildRetriever(resolveRetrieverKind(args), defaultEmbedder()),
         k: resolveK(args),
+        ...(rerankerFlag !== undefined
+          ? { reranker: resolveReranker(rerankerFlag, args) }
+          : {}),
       }
     : undefined;
 

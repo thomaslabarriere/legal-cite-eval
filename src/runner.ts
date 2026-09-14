@@ -7,12 +7,15 @@ import type {
   RunStats,
 } from "./types.js";
 import type { Retriever } from "./corpus/retrieve.js";
+import type { Reranker } from "./corpus/rerank.js";
 import { evaluateQuestion } from "./eval/evaluate.js";
 
-/** RAG configuration for a run: which retriever and how many candidates. */
+/** RAG configuration for a run: which retriever, how many candidates, and an
+ *  optional reranker that reorders the shortlist BEFORE the agent cites. */
 export interface RetrievalOptions {
   retriever: Retriever;
   k: number;
+  reranker?: Reranker;
 }
 
 /** Synthetic result for a question whose agent run threw (API error, etc.). */
@@ -55,9 +58,14 @@ export async function runQuestion(
   question: Question,
   retrieval?: RetrievalOptions,
 ): Promise<QuestionResult> {
-  const retrieved = retrieval
+  let retrieved = retrieval
     ? await retrieval.retriever.retrieve(question.question, retrieval.k)
     : undefined;
+  // Rerank the shortlist BEFORE the agent sees it: reordering changes which
+  // article leads, hence which one the agent cites, hence the attribution.
+  if (retrieval?.reranker !== undefined && retrieved !== undefined) {
+    retrieved = await retrieval.reranker.rerank(question.question, retrieved);
+  }
   const start = Date.now();
   try {
     const run = await agent.run(
