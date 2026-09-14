@@ -67,14 +67,17 @@ article cited under an answer it does not actually support (a false positive an
 answer-blind judge cannot catch).
 
 **Why.** If the gold set relabelled the judge's own signal, calibration would be
-circular: the judge is graded against itself and scores ~100% by construction —
-a number that measures nothing. This is the single most important decision in
-the repo, and it is why the honest figure fell from **92% to 74%** once the
-circularity was removed. I would rather ship a 74% I can defend than a 92% that
-is an artefact of grading a judge against its own key.
+circular: the judge is graded against itself and scores **~100% by construction**
+— a number that measures nothing. This is the single most important decision in
+the repo, and it is why the answer-blind judge scores only **74% (14/19)** once
+the gold is decoupled from its `keyAuthorities` signal. I would rather ship a
+74% I can defend than a ~100% that is an artefact of grading a judge against its
+own key. (The circular gold that would produce the ~100% is deliberately *not*
+committed; the point is precisely that such a number is meaningless.)
 
-**Doesn't prove.** 74% is on 12 items; it bounds the demo judge's answer-
-blindness, it is not a stable population estimate.
+**Doesn't prove.** 74% is on 19 hand-labelled items, and the divergent cases are
+placed by hand — it bounds the demo judge's answer-blindness, it is not a stable
+population estimate.
 
 ---
 
@@ -121,25 +124,32 @@ that it resists every mutation of its own code.
 
 ---
 
-## 6. On a missing judge verdict the harness currently fails OPEN — a known limit
+## 6. A missing judge verdict is UNCERTAIN — fail-safe, not fail-open
 
-**Fork.** When the judge returns no verdict for a citation, treat it as relevant
-(fail-open), irrelevant (fail-closed), or a third "unknown" state.
+**Fork.** When the judge returns no verdict for a citation (API error, malformed
+output, or a citation it simply skipped), treat it as relevant (fail-open),
+irrelevant (fail-closed), or a third "unknown" state.
 
-**Chosen (for now).** Fail-open, consistently in `judge.ts` and
-`calibration.ts`, so the two agree and the calibration number stays honest about
-the judge as actually run.
+**Chosen.** The third state. An unverified citation is `{ relevant: false,
+uncertain: true }`: it fires no failure metric (never fabricates an agent
+error), it is not a verified pass, and `calibrateJudge` excludes it from the
+agreement-rate denominator (`agree / (total - uncertain)`). `judge.ts` and
+`calibration.ts` agree on this, and it is tested (a throwing / malformed /
+partial-verdict client → uncertain, not relevant; a fully-uncertain judge →
+0 fabricated false positives).
 
-**Why / honest limit.** Fail-open is the *weaker* safety choice: a silent judge
-outage looks like "citation is fine". I kept it only because it keeps
-calibration consistent with the live judge; I would not ship it to production. A
-sibling project of mine (RAG reliability) uses an explicit `UNCERTAIN` state
-that is excluded from the rate — that is the correct design, and it is the first
-thing I would port here. Naming this openly because a reviewer will find it, and
-because the point of the repo is to surface exactly this kind of blind spot.
+**Why.** This started as fail-OPEN — a silent judge outage read as "citation is
+fine", the single most mission-contrary default for a legal-reliability tool.
+Worse, in calibration a fail-open default on a gold-*false* item fabricated a
+false positive indistinguishable from a genuinely complaisant verdict, so the
+outage silently polluted the headline number. The `UNCERTAIN` state (borrowed
+from a sibling RAG-reliability project) removes both: an unverified item can no
+longer masquerade as a pass or as a fault. I flagged this as the #1 thing to fix
+and fixed it rather than ship the version I'd already called inferior.
 
-**Doesn't prove.** As-is, a run cannot distinguish "judged relevant" from "judge
-was silent".
+**Doesn't prove.** A high uncertain count means the judge is flaky, not that the
+agent is good — a run must be read with its uncertain count in view, not just
+its agreement rate.
 
 ---
 

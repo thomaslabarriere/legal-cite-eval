@@ -193,14 +193,18 @@ export function renderScorecard(sc: Scorecard): string {
   if (sc.judgeCalibration !== undefined) {
     const jc = sc.judgeCalibration;
     lines.push("");
+    const verified = jc.total - jc.uncertain;
     lines.push("Judge calibration");
     lines.push(`  Judge: ${jc.judgeName}`);
     lines.push(
       `  Agreement rate: ${(jc.agreementRate * 100).toFixed(0)}% ` +
-        `(${jc.agree}/${jc.total})`,
+        `(${jc.agree}/${verified})`,
     );
     lines.push(`  False positives: ${jc.falsePositive}`);
     lines.push(`  False negatives: ${jc.falseNegative}`);
+    if (jc.uncertain > 0) {
+      lines.push(`  Uncertain (judge could not verify, excluded): ${jc.uncertain}`);
+    }
   }
 
   lines.push(rule);

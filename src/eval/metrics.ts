@@ -53,12 +53,14 @@ export function failsUnsupportedClaim(
 }
 
 /**
- * TRUE if the judge marked any assessed citation as not relevant.
+ * TRUE if the judge marked any assessed citation as CONFIRMED not relevant.
+ * An `uncertain` judgment (judge could not verify) does NOT fire this metric:
+ * a judge outage must not fabricate an agent failure (see DECISIONS #6).
  */
 export function failsIrrelevantCitation(
   judgments: CitationJudgment[],
 ): boolean {
-  return judgments.some((j) => j.relevant === false);
+  return judgments.some((j) => j.relevant === false && j.uncertain !== true);
 }
 
 /**

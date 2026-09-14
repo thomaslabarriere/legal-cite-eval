@@ -67,6 +67,14 @@ export interface CitationJudgment {
   citation: LegalRef;
   /** Does this cited article actually support the answer to the question? */
   relevant: boolean;
+  /**
+   * The judge could NOT verify this citation (API error, malformed output, or
+   * no verdict returned for it). When true, `relevant` is not a real verdict
+   * and must be ignored: an unverified citation is neither a confirmed
+   * irrelevance (that would fabricate an agent failure) nor a verified pass.
+   * Replaces the old fail-open default (see DECISIONS.md #6).
+   */
+  uncertain?: boolean;
   reason?: string;
 }
 
@@ -108,7 +116,13 @@ export interface JudgeCalibration {
   falsePositive: number;
   /** Judge said not relevant, ground truth said relevant. */
   falseNegative: number;
-  /** agree / total (0..1). */
+  /**
+   * Judge could not verify the citation (uncertain). Excluded from agree /
+   * falsePositive / falseNegative and from the agreement-rate denominator, so a
+   * judge outage never inflates or deflates the measured reliability.
+   */
+  uncertain: number;
+  /** agree / (total - uncertain), i.e. agreement over VERIFIED items (0..1). */
   agreementRate: number;
 }
 

@@ -8,10 +8,13 @@ import type { Judge, JudgeGoldItem, JudgeCalibration } from "../types.js";
  *  - agree:         judge verdict == gold label
  *  - falsePositive: judge relevant=true,  gold relevant=false
  *  - falseNegative: judge relevant=false, gold relevant=true
+ *  - uncertain:     judge could not verify (or returned no verdict) -> EXCLUDED
+ *                   from agree/FP/FN and from the rate denominator, so a judge
+ *                   outage never fabricates a false positive nor moves the rate
+ *                   (this is why the harness fails SAFE, not open).
  *
- * If the judge returns no judgment for the citation we treat it as
- * relevant=true (fail-open), consistent with the judges in judge.ts. Given a
- * deterministic judge this function is deterministic.
+ * The agreement rate is over VERIFIED items only: agree / (total - uncertain).
+ * Given a deterministic judge this function is deterministic.
  */
 export async function calibrateJudge(
   judge: Judge,
@@ -20,6 +23,7 @@ export async function calibrateJudge(
   let agree = 0;
   let falsePositive = 0;
   let falseNegative = 0;
+  let uncertain = 0;
 
   for (const item of gold) {
     const judgments = await judge.assess({
@@ -28,9 +32,13 @@ export async function calibrateJudge(
       citations: [item.citation],
     });
 
-    // Fail-open if the judge returned no verdict for this citation.
     const first = judgments[0];
-    const judgedRelevant = first !== undefined ? first.relevant : true;
+    // No verdict at all, or an explicit uncertain verdict -> unverified.
+    if (first === undefined || first.uncertain === true) {
+      uncertain++;
+      continue;
+    }
+    const judgedRelevant = first.relevant;
 
     if (judgedRelevant === item.relevant) {
       agree++;
@@ -42,12 +50,14 @@ export async function calibrateJudge(
   }
 
   const total = gold.length;
+  const verified = total - uncertain;
   return {
     judgeName: judge.name,
     total,
     agree,
     falsePositive,
     falseNegative,
-    agreementRate: total > 0 ? agree / total : 1,
+    uncertain,
+    agreementRate: verified > 0 ? agree / verified : 1,
   };
 }

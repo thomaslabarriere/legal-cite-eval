@@ -44,8 +44,9 @@ Judge calibration
 
 # Note: two distinct judges, two distinct numbers, both honest:
 #  - OFFLINE static demo judge (answer-blind), calibrated against the
-#    DE-CIRCULARIZED gold set: 92% -> 74% once the circularity is removed
-#    (see DECISIONS.md #3). This is the methodology point.
+#    DE-CIRCULARIZED gold set: 74% (14/19). A circular gold would score ~100%
+#    by construction (not committed, precisely because it measures nothing).
+#    This is the methodology point (see DECISIONS.md #3).
 #  - REAL gpt-4o judge (this run): 89% (17/19), 2 false positives, 0 false
 #    negatives. Even a strong LLM judge rubber-stamps 2 unsupported citations
 #    as relevant -- which is exactly why the judge must be measured, not trusted.

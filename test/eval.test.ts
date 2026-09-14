@@ -302,7 +302,7 @@ describe("LLM agent — pure tool-call parser (parseAnswerCall)", () => {
   });
 });
 
-describe("LLM judge — fail-open seam (injected client, 0 API calls)", () => {
+describe("LLM judge — fail-safe seam (injected client, 0 API calls)", () => {
   it("honors a genuine model verdict (does not fabricate relevance)", async () => {
     const judge = createLLMJudge({
       model: "fake",
@@ -316,7 +316,9 @@ describe("LLM judge — fail-open seam (injected client, 0 API calls)", () => {
     expect(out).toEqual([{ citation: "1240", relevant: false, reason: "off point" }]);
   });
 
-  it("fails OPEN (relevant=true) when the client throws — never a fabricated agent failure", async () => {
+  it("fails SAFE (uncertain, NOT relevant=true) when the client throws", async () => {
+    // A judge outage must not read as "citation OK" (old fail-open bug), nor as
+    // a fabricated agent failure. It is unverified -> uncertain. (DECISIONS #6)
     const judge = createLLMJudge({
       model: "fake",
       client: fakeChatClient(async () => {
@@ -325,18 +327,18 @@ describe("LLM judge — fail-open seam (injected client, 0 API calls)", () => {
     });
     const out = await judge.assess({ question: "q", answer: "a", citations: ["1240", "544"] });
     expect(out).toEqual([
-      { citation: "1240", relevant: true },
-      { citation: "544", relevant: true },
+      { citation: "1240", relevant: false, uncertain: true },
+      { citation: "544", relevant: false, uncertain: true },
     ]);
   });
 
-  it("fails OPEN when the model returns malformed tool arguments", async () => {
+  it("fails SAFE (uncertain) when the model returns malformed tool arguments", async () => {
     const judge = createLLMJudge({
       model: "fake",
       client: fakeChatClient(async () => toolCallCompletion("report_relevance", "}{ not json")),
     });
     const out = await judge.assess({ question: "q", answer: "a", citations: ["1240"] });
-    expect(out).toEqual([{ citation: "1240", relevant: true }]);
+    expect(out).toEqual([{ citation: "1240", relevant: false, uncertain: true }]);
   });
 });
 

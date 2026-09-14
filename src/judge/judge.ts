@@ -115,12 +115,13 @@ function buildSystemPrompt(): string {
 /**
  * LLM-as-a-Judge. Asks the model which cited articles support the answer.
  *
- * FAIL-OPEN POLICY: on any error (API failure, malformed output, a citation
- * the model did not return a verdict for) each affected citation defaults to
- * `{ relevant: true }`. The judge measures the AGENT, so a fault in the judge
- * must never fabricate an agent failure — better to under-report than to
- * penalize the agent for the judge's own unreliability. The judge's own
- * reliability is measured separately via calibration.
+ * FAIL-SAFE (UNCERTAIN) POLICY: on any error (API failure, malformed output, a
+ * citation the model did not return a verdict for) each affected citation is
+ * marked `{ relevant: false, uncertain: true }`. `uncertain` means "not
+ * verified": downstream it is neither counted as a confirmed irrelevance (that
+ * would fabricate an agent failure) nor as a verified pass, and calibration
+ * excludes it from the rate. This replaces the earlier fail-OPEN default
+ * (which silently turned a judge outage into "citation OK") — see DECISIONS #6.
  */
 export function createLLMJudge(opts: {
   model: string;
@@ -153,9 +154,9 @@ export function createLLMJudge(opts: {
   }): Promise<CitationJudgment[]> {
     const normalized = input.citations.map((c) => normalizeRef(c));
 
-    // Fail-open default: every citation relevant.
+    // Fail-safe default: every citation UNVERIFIED (not a pass, not a failure).
     const buildDefault = (): CitationJudgment[] =>
-      normalized.map((citation) => ({ citation, relevant: true }));
+      normalized.map((citation) => ({ citation, relevant: false, uncertain: true }));
 
     let verdicts: Map<LegalRef, ParsedVerdict> | null = null;
     try {
@@ -198,8 +199,8 @@ export function createLLMJudge(opts: {
     return normalized.map((citation): CitationJudgment => {
       const verdict = found.get(citation);
       if (verdict === undefined) {
-        // No verdict for this citation -> fail-open.
-        return { citation, relevant: true };
+        // No verdict for this citation -> unverified (fail-safe), not "relevant".
+        return { citation, relevant: false, uncertain: true };
       }
       const judgment: CitationJudgment = {
         citation,
