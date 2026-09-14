@@ -6,7 +6,9 @@ import { questions } from "./scenarios/questions.js";
 import { judgeGold } from "./scenarios/judge_gold.js";
 import { runQuestions } from "./runner.js";
 import type { RetrievalOptions } from "./runner.js";
-import { keywordRetriever } from "./corpus/retrieve.js";
+import { buildRetriever, type RetrieverKind } from "./corpus/retrieve.js";
+import { defaultEmbedder } from "./corpus/embeddings.js";
+import { recallAtK } from "./eval/recall.js";
 import { buildScorecard, renderScorecard } from "./eval/scorecard.js";
 import { createLLMAgent } from "./agent/runAgent.js";
 import type { Provider } from "./agent/runAgent.js";
@@ -59,7 +61,9 @@ function usage(): void {
       "  legal-cite-eval run [--provider openai|openrouter] [--model <model>]",
       "  legal-cite-eval run --models <m1,m2,...>      # compare several models",
       "  legal-cite-eval run --rag [--k <n>]           # retrieve-then-cite + recall metric",
+      "  legal-cite-eval run --retriever keyword|semantic|hybrid [--k <n>]   # choose the RAG retriever",
       "  legal-cite-eval run --agent buggy:<name>      # no API key needed",
+      "  legal-cite-eval retrievers [--k <n>]          # compare keyword/semantic/hybrid recall (offline)",
       "",
       "Keys (set one): OPENAI_API_KEY  or  OPENROUTER_API_KEY",
       "Optional tracing: LANGFUSE_PUBLIC_KEY + LANGFUSE_SECRET_KEY",
@@ -108,20 +112,74 @@ function renderComparison(cards: Scorecard[]): string {
   return ["", "=".repeat(64), "Model comparison", "-".repeat(64), rows, "=".repeat(64)].join("\n");
 }
 
+function resolveK(args: string[]): number {
+  const k = Number(getFlag(args, "k") ?? DEFAULT_RAG_K);
+  return Number.isFinite(k) && k > 0 ? k : DEFAULT_RAG_K;
+}
+
+function resolveRetrieverKind(args: string[]): RetrieverKind {
+  const flag = getFlag(args, "retriever");
+  if (flag === "keyword" || flag === "semantic" || flag === "hybrid") return flag;
+  if (flag !== undefined) {
+    throw new Error(`Unknown retriever "${flag}". Use keyword | semantic | hybrid.`);
+  }
+  return "keyword";
+}
+
+/** Compare recall of keyword / semantic / hybrid on the labelled question set. */
+async function retrieversCommand(args: string[]): Promise<void> {
+  const k = resolveK(args);
+  const embedder = defaultEmbedder();
+  const kinds: RetrieverKind[] = ["keyword", "semantic", "hybrid"];
+  const offline = !process.env["OPENAI_API_KEY"];
+  console.log(
+    `\nRetrieval recall @k=${k} on ${questions.length} labelled questions` +
+      ` (embedder: ${embedder.name}${offline ? ", OFFLINE hashed bag-of-words" : ""})`,
+  );
+  console.log("-".repeat(64));
+  for (const kind of kinds) {
+    const result = await recallAtK(buildRetriever(kind, embedder), questions, k);
+    const pct = `${(result.recall * 100).toFixed(0)}%`.padStart(4);
+    const missed = result.missed.length > 0 ? `   missed: ${result.missed.join(", ")}` : "";
+    console.log(`  ${kind.padEnd(10)} recall ${pct}  (${result.hits}/${result.total})${missed}`);
+  }
+  console.log("-".repeat(64));
+  if (offline) {
+    console.log(
+      "Note: offline uses a deterministic hashed bag-of-words embedder; set\n" +
+        "OPENAI_API_KEY for real embeddings. The embedder indexes the fuller\n" +
+        "article gloss while the lexical baseline indexes the label alone, so on\n" +
+        "the hard paraphrased questions (where the question misses the label\n" +
+        "vocabulary) keyword recall drops and hybrid recovers it.",
+    );
+  }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  if (args[0] !== "run") {
+  const command = args[0];
+
+  if (command === "retrievers") {
+    await retrieversCommand(args);
+    return;
+  }
+
+  if (command !== "run") {
     usage();
-    process.exit(args[0] ? 1 : 0);
+    process.exit(command ? 1 : 0);
   }
 
   const out = getFlag(args, "out") ?? "scorecard.json";
 
-  // RAG mode: retrieve-then-cite over the full corpus with the lexical
-  // baseline retriever, and grade retrieval recall (missed_retrieval).
-  const ragK = Number(getFlag(args, "k") ?? DEFAULT_RAG_K);
-  const retrieval: RetrievalOptions | undefined = hasFlag(args, "rag")
-    ? { retriever: keywordRetriever(), k: Number.isFinite(ragK) && ragK > 0 ? ragK : DEFAULT_RAG_K }
+  // RAG mode: retrieve-then-cite over the full corpus, and grade retrieval
+  // recall (missed_retrieval). --rag uses the keyword baseline; --retriever
+  // selects keyword | semantic | hybrid. Either flag turns RAG on.
+  const ragOn = hasFlag(args, "rag") || getFlag(args, "retriever") !== undefined;
+  const retrieval: RetrievalOptions | undefined = ragOn
+    ? {
+        retriever: buildRetriever(resolveRetrieverKind(args), defaultEmbedder()),
+        k: resolveK(args),
+      }
     : undefined;
 
   // Buggy agent: no API key; judged deterministically by the static judge.

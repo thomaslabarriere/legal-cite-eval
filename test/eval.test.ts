@@ -24,6 +24,7 @@ import {
   keywordRetriever,
   narrowRetriever,
   oracleRetriever,
+  reciprocalRankFusion,
 } from "../src/corpus/retrieve.js";
 
 function question(id: string): Question {
@@ -133,13 +134,39 @@ describe("RAG — retrieval recall metric grades the retriever", () => {
     expect(r.trace.retrieved).toBeUndefined();
   });
 
-  it("the lexical baseline retriever returns ranked, capped candidates", () => {
+  it("the lexical baseline retriever returns ranked, capped candidates", async () => {
     const retriever = keywordRetriever();
     for (const q of questions) {
-      const got = retriever.retrieve(q.question, 4);
+      const got = await retriever.retrieve(q.question, 4);
       expect(got.length).toBeGreaterThan(0);
       expect(got.length).toBeLessThanOrEqual(4);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Reciprocal-rank fusion: the hybrid retriever's core. Pure, deterministic.
+// ---------------------------------------------------------------------------
+describe("reciprocal-rank fusion", () => {
+  it("rewards agreement across rankings over a single high rank", () => {
+    // "b" is rank 2 in BOTH lists; "a" and "c" are each rank 1 in one list only.
+    // RRF should rank the item both retrievers agree on (b) first — this is the
+    // whole point of fusing lexical and semantic rankings.
+    const lex = ["a", "b"];
+    const sem = ["c", "b"];
+    const fused = reciprocalRankFusion([lex, sem]);
+    expect(fused[0]).toBe("b");
+    // a and c tie (rank 1 in one list each) -> ascending id, a before c.
+    expect(fused).toEqual(["b", "a", "c"]);
+  });
+
+  it("is order-independent and breaks ties by ascending id", () => {
+    expect(reciprocalRankFusion([["x"], ["y"]])).toEqual(["x", "y"]);
+    expect(reciprocalRankFusion([["y"], ["x"]])).toEqual(["x", "y"]);
+  });
+
+  it("a single ranking is returned in its own order", () => {
+    expect(reciprocalRankFusion([["c", "a", "b"]])).toEqual(["c", "a", "b"]);
   });
 });
 

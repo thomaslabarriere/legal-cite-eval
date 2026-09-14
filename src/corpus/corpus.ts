@@ -43,6 +43,16 @@ export function existsInCorpus(ref: string): boolean {
   return normalizeRef(ref) in corpus;
 }
 
+/**
+ * The text an EMBEDDING retriever indexes for an article: the label plus its
+ * fuller gloss when present. The lexical baseline deliberately indexes only the
+ * short `label`, so an article whose gloss (but not label) shares a question's
+ * vocabulary is reachable by the semantic/hybrid path and not by lexical.
+ */
+export function articleText(entry: CorpusEntry): string {
+  return entry.gloss ? `${entry.label}. ${entry.gloss}` : entry.label;
+}
+
 /** A compact listing of the corpus for the agent/judge prompt. */
 export function renderCorpusForPrompt(): string {
   return Object.values(corpus)

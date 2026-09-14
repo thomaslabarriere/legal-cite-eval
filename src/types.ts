@@ -17,6 +17,15 @@ export interface CorpusEntry {
   article: LegalRef;
   /** Short public label of the article. */
   label: string;
+  /**
+   * Optional fuller public description of what the article covers, in richer
+   * vocabulary than the short `label`. Only the embedding path (semantic /
+   * hybrid retrieval) indexes it; the lexical baseline indexes the `label`
+   * alone. This asymmetry is what lets an embedding retriever surface an
+   * article whose label does not share the question's vocabulary — a real RAG
+   * advantage the recall comparison is built to expose (see corpus.ts).
+   */
+  gloss?: string;
 }
 
 /** Corpus keyed by normalized article number. */

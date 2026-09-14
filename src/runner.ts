@@ -56,7 +56,7 @@ export async function runQuestion(
   retrieval?: RetrievalOptions,
 ): Promise<QuestionResult> {
   const retrieved = retrieval
-    ? retrieval.retriever.retrieve(question.question, retrieval.k)
+    ? await retrieval.retriever.retrieve(question.question, retrieval.k)
     : undefined;
   const start = Date.now();
   try {
