@@ -1,5 +1,5 @@
-# Real gpt-4o run — raw CLI output (committed as evidence)
-# Date: 2026-09-14 — current corpus: 12 questions, 36-item judge gold. Non-deterministic.
+# Real gpt-4o run: raw CLI output (committed as evidence)
+# Date: 2026-09-14. Current corpus: 12 questions, 36-item judge gold. Non-deterministic.
 
 $ npx tsx src/cli.ts run --model gpt-4o
 
