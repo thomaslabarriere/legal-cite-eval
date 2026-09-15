@@ -1,4 +1,4 @@
-# LegalCiteEval
+# legal-cite-eval
 
 **Citation-reliability evaluation for legal LLM agents, with a calibrated LLM-as-a-Judge.**
 
